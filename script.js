@@ -1,4 +1,4 @@
-﻿const DEFAULT_REMOTE_API_BASE = "https://hoodie-sales-worker.kanedius.workers.dev";
+п»їconst DEFAULT_REMOTE_API_BASE = "https://hoodie-sales-worker.kanedius.workers.dev";
 const DEFAULT_LOCAL_API_BASE = "http://localhost:3000";
 
 function normalizeApiBase(value) {
@@ -86,16 +86,16 @@ const sizeOrder = ['XS', 'XS/S', 'S', 'M', 'M/L', 'L', 'XL', 'XL/XXL', '2XL', 'X
 // Function to assign colors
 function getColor(name) {
     const colorMap = {
-        '╨з╨╛╤А╨╜╨╕╨╣': '#000000',
-        '╨С╤Ц╨╗╨╕╨╣': '#E0E0E0',
-        '╨Э╤Ц╨╢╨╜╨╛-╤А╨╛╨╢╨╡╨▓╨╕╨╣': '#FFC1CC',
-        '╨С╨╡╨╢╨╡╨▓╨╕╨╣': '#F5F5DC',
-        '╨Ю╨╗╨╕╨▓╨░': '#808000',
-        '╨б╤Ц╤А╨╕╨╣ ╨У╤А╤Ц': '#808080',
-        '╨б╤Ц╤А╨╕╨╣': '#808080',
-        '╨е╨░╨║╤Ц': '#C3B091',
-        '╨Ъ╨╛╨╣╨╛╤В': '#8B6F47',
-        '╨Ж╨╜╤И╨╕╨╣ ╨Ъ╨╛╨╗╤Ц╤А': '#FF00FF',
+        'Чорний': '#000000',
+        'Білий': '#E0E0E0',
+        'Ніжно-рожевий': '#FFC1CC',
+        'Бежевий': '#F5F5DC',
+        'Олива': '#808000',
+        'Сірий Грі': '#808080',
+        'Сірий': '#808080',
+        'Хакі': '#C3B091',
+        'Койот': '#8B6F47',
+        'Інший Колір': '#FF00FF',
         'XS': '#FF6347',
         'S': '#4682B4',
         'M': '#32CD32',
@@ -168,8 +168,8 @@ function formatDelta(delta, decimals = 0) {
 // Helper to get month index (0-based)
 function getMonthIndex(monthName) {
     const monthMap = {
-        '╨б╤Ц╤З╨╡╨╜╤М': 0, '╨Ы╤О╤В╨╕╨╣': 1, '╨С╨╡╤А╨╡╨╖╨╡╨╜╤М': 2, '╨Ъ╨▓╤Ц╤В╨╡╨╜╤М': 3, '╨в╤А╨░╨▓╨╡╨╜╤М': 4, '╨з╨╡╤А╨▓╨╡╨╜╤М': 5,
-        '╨Ы╨╕╨┐╨╡╨╜╤М': 6, '╨б╨╡╤А╨┐╨╡╨╜╤М': 7, '╨Т╨╡╤А╨╡╤Б╨╡╨╜╤М': 8, '╨Ц╨╛╨▓╤В╨╡╨╜╤М': 9, '╨Ы╨╕╤Б╤В╨╛╨┐╨░╨┤': 10, '╨У╤А╤Г╨┤╨╡╨╜╤М': 11
+        'в•ЁР±в•¤Р¦в•¤Р—в•Ёв•Ўв•Ёв•њв•¤Рњ': 0, 'в•ЁР«в•¤Рћв•¤Р’в•Ёв••в•Ёв•Ј': 1, 'в•ЁРЎв•Ёв•Ўв•¤Рђв•Ёв•Ўв•Ёв•–в•Ёв•Ўв•Ёв•њв•¤Рњ': 2, 'в•ЁРЄв•Ёв–“в•¤Р¦в•¤Р’в•Ёв•Ўв•Ёв•њв•¤Рњ': 3, 'в•ЁРІв•¤Рђв•Ёв–‘в•Ёв–“в•Ёв•Ўв•Ёв•њв•¤Рњ': 4, 'в•ЁР·в•Ёв•Ўв•¤Рђв•Ёв–“в•Ёв•Ўв•Ёв•њв•¤Рњ': 5,
+        'в•ЁР«в•Ёв••в•Ёв”ђв•Ёв•Ўв•Ёв•њв•¤Рњ': 6, 'в•ЁР±в•Ёв•Ўв•¤Рђв•Ёв”ђв•Ёв•Ўв•Ёв•њв•¤Рњ': 7, 'в•ЁРўв•Ёв•Ўв•¤Рђв•Ёв•Ўв•¤Р‘в•Ёв•Ўв•Ёв•њв•¤Рњ': 8, 'в•ЁР¦в•Ёв•›в•Ёв–“в•¤Р’в•Ёв•Ўв•Ёв•њв•¤Рњ': 9, 'в•ЁР«в•Ёв••в•¤Р‘в•¤Р’в•Ёв•›в•Ёв”ђв•Ёв–‘в•Ёв”¤': 10, 'в•ЁРЈв•¤Рђв•¤Р“в•Ёв”¤в•Ёв•Ўв•Ёв•њв•¤Рњ': 11
     };
     return monthMap[monthName] || 0;
 }
@@ -247,7 +247,7 @@ function getSelectedYear() {
 // Function to update total sales display
 function updateTotalSales(productData, filteredMonths, chartType, datasets) {
     const totalSalesDiv = document.getElementById('totalSales');
-    let html = '<h3>╨Ч╨░╨│╨░╨╗╤М╨╜╤Ц ╤Б╤Г╨╝╨╕ ╨┐╤А╨╛╨┤╨░╨╢╤Ц╨▓:</h3><ul>';
+    let html = '<h3>в•ЁР§в•Ёв–‘в•Ёв”‚в•Ёв–‘в•Ёв•—в•¤Рњв•Ёв•њв•¤Р¦ в•¤Р‘в•¤Р“в•Ёв•ќв•Ёв•• в•Ёв”ђв•¤Рђв•Ёв•›в•Ёв”¤в•Ёв–‘в•Ёв•ўв•¤Р¦в•Ёв–“:</h3><ul>';
     const selectedYear = filteredMonths.length > 0 ? filteredMonths[0].year : null;
     const previousYear = selectedYear !== null ? selectedYear - 1 : null;
     const monthNames = filteredMonths.map(month => month.month);
@@ -295,7 +295,7 @@ function updateDailyDemandNumbers(productData) {
     let html = '';
     const month = productData.months.find(m => m.year === parseInt(yearSelect) && m.month === monthSelect);
     if (!month || !month.colors[colorSelect]) {
-        html = '<p>╨Э╨╡╨╝╨░╤Ф ╨┤╨░╨╜╨╕╤Е ╨┤╨╗╤П ╨▓╨╕╨▒╤А╨░╨╜╨╛╨│╨╛ ╤А╨╛╨║╤Г, ╨╝╤Ц╤Б╤П╤Ж╤П ╨░╨▒╨╛ ╨║╨╛╨╗╤М╨╛╤А╤Г</p>';
+        html = '<p>в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв”¤в•Ёв–‘в•Ёв•њв•Ёв••в•¤Р• в•Ёв”¤в•Ёв•—в•¤Рџ в•Ёв–“в•Ёв••в•Ёв–’в•¤Рђв•Ёв–‘в•Ёв•њв•Ёв•›в•Ёв”‚в•Ёв•› в•¤Рђв•Ёв•›в•Ёв•‘в•¤Р“, в•Ёв•ќв•¤Р¦в•¤Р‘в•¤Рџв•¤Р–в•¤Рџ в•Ёв–‘в•Ёв–’в•Ёв•› в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•¤Р“</p>';
         dailyDemandList.innerHTML = html;
         return;
     }
@@ -305,7 +305,7 @@ function updateDailyDemandNumbers(productData) {
     const previousYear = month.year - 1;
     const previousMonth = productData.months.find(m => m.year === previousYear && m.month === month.month) || null;
     const previousDaysInMonth = previousMonth ? getDaysInMonth(previousMonth.month, previousMonth.year) : null;
-    let totalDaily = 0; // ╨Ф╨╗╤П ╨┐╤Г╨╜╨║╤В╤Г "╨г╤Б╤М╨╛╨│╨╛"
+    let totalDaily = 0; // в•ЁР¤в•Ёв•—в•¤Рџ в•Ёв”ђв•¤Р“в•Ёв•њв•Ёв•‘в•¤Р’в•¤Р“ "в•ЁРів•¤Р‘в•¤Рњв•Ёв•›в•Ёв”‚в•Ёв•›"
     let totalPreviousDaily = 0;
     html += `<h4><span class="color-square" style="background-color: ${colorHex};"></span>${colorSelect}</h4>`;
     html += '<ul class="fade-in">';
@@ -330,10 +330,10 @@ function updateDailyDemandNumbers(productData) {
         }
         totalDaily += daily;
     });
-    totalDaily = Math.round(totalDaily * 10) / 10; // ╨Ю╨║╤А╤Г╨│╨╗╨╡╨╜╨╜╤П ╨┤╨╛ 1 ╨╖╨╜╨░╨║╨░
+    totalDaily = Math.round(totalDaily * 10) / 10; // в•ЁР®в•Ёв•‘в•¤Рђв•¤Р“в•Ёв”‚в•Ёв•—в•Ёв•Ўв•Ёв•њв•Ёв•њв•¤Рџ в•Ёв”¤в•Ёв•› 1 в•Ёв•–в•Ёв•њв•Ёв–‘в•Ёв•‘в•Ёв–‘
     totalPreviousDaily = Math.round(totalPreviousDaily * 10) / 10;
     const totalDiffHtml = previousMonth && previousDaysInMonth ? formatDelta(totalDaily - totalPreviousDaily, 1) : '';
-    html += `<li class="fade-in"><span class="label">╨г╤Б╤М╨╛╨│╨╛</span><span class="value">${totalDaily}${totalDiffHtml ? ` ${totalDiffHtml}` : ''}</span></li>`;
+    html += `<li class="fade-in"><span class="label">в•ЁРів•¤Р‘в•¤Рњв•Ёв•›в•Ёв”‚в•Ёв•›</span><span class="value">${totalDaily}${totalDiffHtml ? ` ${totalDiffHtml}` : ''}</span></li>`;
     html += '</ul>';
     dailyDemandList.innerHTML = html;
     // Remove fade-in class after animation completes
@@ -413,7 +413,7 @@ function updateYearSelect(productData) {
         yearSelect.appendChild(option);
     });
     if (years.length === 0) {
-        yearSelect.innerHTML = '<option value="">╨Э╨╡╨╝╨░╤Ф ╤А╨╛╨║╤Ц╨▓</option>';
+        yearSelect.innerHTML = '<option value="">в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•¤Рђв•Ёв•›в•Ёв•‘в•¤Р¦в•Ёв–“</option>';
         return;
     }
     const fallbackYear = String(years[0]);
@@ -427,7 +427,7 @@ function updateMonthSelect(productData) {
     const yearSelectValue = parseInt(document.getElementById('yearSelect').value, 10);
     monthSelect.innerHTML = '';
     if (Number.isNaN(yearSelectValue)) {
-        monthSelect.innerHTML = '<option value="">╨Э╨╡╨╝╨░╤Ф ╨╝╤Ц╤Б╤П╤Ж╤Ц╨▓</option>';
+        monthSelect.innerHTML = '<option value="">в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв•ќв•¤Р¦в•¤Р‘в•¤Рџв•¤Р–в•¤Р¦в•Ёв–“</option>';
         return;
     }
     const months = Array.from(new Set(
@@ -442,7 +442,7 @@ function updateMonthSelect(productData) {
         monthSelect.appendChild(option);
     });
     if (months.length === 0) {
-        monthSelect.innerHTML = '<option value="">╨Э╨╡╨╝╨░╤Ф ╨╝╤Ц╤Б╤П╤Ж╤Ц╨▓</option>';
+        monthSelect.innerHTML = '<option value="">в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв•ќв•¤Р¦в•¤Р‘в•¤Рџв•¤Р–в•¤Р¦в•Ёв–“</option>';
         return;
     }
     const fallbackMonth = months[0];
@@ -457,7 +457,7 @@ function updateColorSelect(productData) {
     const monthSelectValue = document.getElementById('monthSelect').value;
     colorSelect.innerHTML = '';
     if (Number.isNaN(yearSelectValue) || !monthSelectValue) {
-        colorSelect.innerHTML = '<option value="">╨Э╨╡╨╝╨░╤Ф ╨║╨╛╨╗╤М╨╛╤А╤Ц╨▓</option>';
+        colorSelect.innerHTML = '<option value="">в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•¤Р¦в•Ёв–“</option>';
         return;
     }
     const colors = Array.from(new Set(
@@ -472,7 +472,7 @@ function updateColorSelect(productData) {
         colorSelect.appendChild(option);
     });
     if (colors.length === 0) {
-        colorSelect.innerHTML = '<option value="">╨Э╨╡╨╝╨░╤Ф ╨║╨╛╨╗╤М╨╛╤А╤Ц╨▓</option>';
+        colorSelect.innerHTML = '<option value="">в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•¤Р¦в•Ёв–“</option>';
         return;
     }
     const fallbackColor = colors[0];
@@ -484,8 +484,8 @@ function updateProductSelect() {
     const productSelect = document.getElementById('productSelect');
     productSelect.innerHTML = '';
     if (!normalizedProducts || normalizedProducts.length === 0) {
-        productSelect.innerHTML = '<option value="">╨Э╨╡╨╝╨░╤Ф ╨┐╤А╨╛╨┤╤Г╨║╤В╤Ц╨▓</option>';
-        document.getElementById('totalSales').innerHTML = '<p style="color: red;">╨Я╨╛╨╝╨╕╨╗╨║╨░: ╨Э╨╡╨╝╨░╤Ф ╨┐╤А╨╛╨┤╤Г╨║╤В╤Ц╨▓ ╤Г ╨┤╨░╨╜╨╕╤Е</p>';
+        productSelect.innerHTML = '<option value="">в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв”ђв•¤Рђв•Ёв•›в•Ёв”¤в•¤Р“в•Ёв•‘в•¤Р’в•¤Р¦в•Ёв–“</option>';
+        document.getElementById('totalSales').innerHTML = '<p style="color: red;">в•ЁРЇв•Ёв•›в•Ёв•ќв•Ёв••в•Ёв•—в•Ёв•‘в•Ёв–‘: в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв”ђв•¤Рђв•Ёв•›в•Ёв”¤в•¤Р“в•Ёв•‘в•¤Р’в•¤Р¦в•Ёв–“ в•¤Р“ в•Ёв”¤в•Ёв–‘в•Ёв•њв•Ёв••в•¤Р•</p>';
         console.error('normalizedProducts is empty or undefined');
         return;
     }
@@ -501,7 +501,7 @@ function updateProductSelect() {
 function updateChartTypes() {
     const productSelect = document.getElementById('productSelect').value;
     const chartTypeSelect = document.getElementById('chartType');
-    chartTypeSelect.innerHTML = '<option value="byColor">╨Я╤А╨╛╨┤╨░╨╢╤Ц ╤В╨░ ╨┐╨╛╨┐╨╕╤В ╨╖╨░ ╨║╨╛╨╗╤М╨╛╤А╨░╨╝╨╕</option>';
+    chartTypeSelect.innerHTML = '<option value="byColor">в•ЁРЇв•¤Рђв•Ёв•›в•Ёв”¤в•Ёв–‘в•Ёв•ўв•¤Р¦ в•¤Р’в•Ёв–‘ в•Ёв”ђв•Ёв•›в•Ёв”ђв•Ёв••в•¤Р’ в•Ёв•–в•Ёв–‘ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•Ёв–‘в•Ёв•ќв•Ёв••</option>';
     const productData = getProductByName(productSelect);
     if (!productData) {
         console.error('No product data for', productSelect);
@@ -511,7 +511,7 @@ function updateChartTypes() {
     colors.forEach(color => {
         const option = document.createElement('option');
         option.value = color;
-        option.textContent = `╨а╨╛╨╖╨╝╤Ц╤А╨╕ ╨┤╨╗╤П ${color}`;
+        option.textContent = `в•ЁР°в•Ёв•›в•Ёв•–в•Ёв•ќв•¤Р¦в•¤Рђв•Ёв•• в•Ёв”¤в•Ёв•—в•¤Рџ ${color}`;
         chartTypeSelect.appendChild(option);
     });
     console.log('Chart types updated with', colors.length, 'colors');
@@ -524,9 +524,9 @@ function updateChart() {
     const weeklyDemandChartTitle = document.getElementById('weeklyDemandChartTitle');
     const productData = getProductByName(productSelect);
     if (!productData) {
-        salesChartTitle.textContent = '╨Ф╨░╨╜╤Ц ╨╜╨╡╨┤╨╛╤Б╤В╤Г╨┐╨╜╤Ц';
-        weeklyDemandChartTitle.textContent = '╨Ф╨░╨╜╤Ц ╨╜╨╡╨┤╨╛╤Б╤В╤Г╨┐╨╜╤Ц';
-        document.getElementById('totalSales').innerHTML = '<p style="color: red;">╨Я╨╛╨╝╨╕╨╗╨║╨░: ╨Т╨╕╨▒╤А╨░╨╜╨╕╨╣ ╨┐╤А╨╛╨┤╤Г╨║╤В ╨╜╨╡ ╨╖╨╜╨░╨╣╨┤╨╡╨╜╨╛</p>';
+        salesChartTitle.textContent = 'в•ЁР¤в•Ёв–‘в•Ёв•њв•¤Р¦ в•Ёв•њв•Ёв•Ўв•Ёв”¤в•Ёв•›в•¤Р‘в•¤Р’в•¤Р“в•Ёв”ђв•Ёв•њв•¤Р¦';
+        weeklyDemandChartTitle.textContent = 'в•ЁР¤в•Ёв–‘в•Ёв•њв•¤Р¦ в•Ёв•њв•Ёв•Ўв•Ёв”¤в•Ёв•›в•¤Р‘в•¤Р’в•¤Р“в•Ёв”ђв•Ёв•њв•¤Р¦';
+        document.getElementById('totalSales').innerHTML = '<p style="color: red;">в•ЁРЇв•Ёв•›в•Ёв•ќв•Ёв••в•Ёв•—в•Ёв•‘в•Ёв–‘: в•ЁРўв•Ёв••в•Ёв–’в•¤Рђв•Ёв–‘в•Ёв•њв•Ёв••в•Ёв•Ј в•Ёв”ђв•¤Рђв•Ёв•›в•Ёв”¤в•¤Р“в•Ёв•‘в•¤Р’ в•Ёв•њв•Ёв•Ў в•Ёв•–в•Ёв•њв•Ёв–‘в•Ёв•Јв•Ёв”¤в•Ёв•Ўв•Ёв•њв•Ёв•›</p>';
         document.getElementById('dailyDemandList').innerHTML = '';
         console.error('Product not found:', productSelect);
         return;
@@ -536,8 +536,8 @@ function updateChart() {
         ? productData.months
         : productData.months.filter(month => month.year === selectedYear);
     if (filteredMonths.length === 0) {
-        salesChartTitle.textContent = `╨Э╨╡╨╝╨░╤Ф ╨┤╨░╨╜╨╕╤Е ╨┤╨╗╤П ${productSelect} ╤Г ${selectedYear} ╤А╨╛╤Ж╤Ц`;
-        weeklyDemandChartTitle.textContent = `╨Э╨╡╨╝╨░╤Ф ╨┤╨░╨╜╨╕╤Е ╨┤╨╗╤П ${productSelect} ╤Г ${selectedYear} ╤А╨╛╤Ж╤Ц`;
+        salesChartTitle.textContent = `в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв”¤в•Ёв–‘в•Ёв•њв•Ёв••в•¤Р• в•Ёв”¤в•Ёв•—в•¤Рџ ${productSelect} в•¤Р“ ${selectedYear} в•¤Рђв•Ёв•›в•¤Р–в•¤Р¦`;
+        weeklyDemandChartTitle.textContent = `в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв”¤в•Ёв–‘в•Ёв•њв•Ёв••в•¤Р• в•Ёв”¤в•Ёв•—в•¤Рџ ${productSelect} в•¤Р“ ${selectedYear} в•¤Рђв•Ёв•›в•¤Р–в•¤Р¦`;
         if (salesChart) {
             salesChart.destroy();
             salesChart = null;
@@ -546,7 +546,7 @@ function updateChart() {
             weeklyDemandChart.destroy();
             weeklyDemandChart = null;
         }
-        document.getElementById('totalSales').innerHTML = '<p>╨Э╨╡╨╝╨░╤Ф ╨┤╨░╨╜╨╕╤Е ╨┤╨╗╤П ╨▓╨╕╨▒╤А╨░╨╜╨╛╨│╨╛ ╤А╨╛╨║╤Г</p>';
+        document.getElementById('totalSales').innerHTML = '<p>в•ЁР­в•Ёв•Ўв•Ёв•ќв•Ёв–‘в•¤Р¤ в•Ёв”¤в•Ёв–‘в•Ёв•њв•Ёв••в•¤Р• в•Ёв”¤в•Ёв•—в•¤Рџ в•Ёв–“в•Ёв••в•Ёв–’в•¤Рђв•Ёв–‘в•Ёв•њв•Ёв•›в•Ёв”‚в•Ёв•› в•¤Рђв•Ёв•›в•Ёв•‘в•¤Р“</p>';
         return;
     }
     const colors = getProductColors(productData, filteredMonths);
@@ -568,9 +568,9 @@ function updateChart() {
                 categoryPercentage: 0.9
             };
         });
-        const titleSuffix = selectedYear ? ` (${selectedYear} ╤А╤Ц╨║)` : '';
-        salesChartTitle.textContent = `╨Я╤А╨╛╨┤╨░╨╢╤Ц ╨╖╨░ ╨║╨╛╨╗╤М╨╛╤А╨░╨╝╨╕ ╨┤╨╗╤П ${productSelect}${titleSuffix}`;
-        weeklyDemandChartTitle.textContent = `╨й╨╛╤В╨╕╨╢╨╜╨╡╨▓╨╕╨╣ ╨┐╨╛╨┐╨╕╤В ╨╖╨░ ╨║╨╛╨╗╤М╨╛╤А╨░╨╝╨╕ ╨┤╨╗╤П ${productSelect}${titleSuffix}`;
+        const titleSuffix = selectedYear ? ` (${selectedYear} в•¤Рђв•¤Р¦в•Ёв•‘)` : '';
+        salesChartTitle.textContent = `в•ЁРЇв•¤Рђв•Ёв•›в•Ёв”¤в•Ёв–‘в•Ёв•ўв•¤Р¦ в•Ёв•–в•Ёв–‘ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•Ёв–‘в•Ёв•ќв•Ёв•• в•Ёв”¤в•Ёв•—в•¤Рџ ${productSelect}${titleSuffix}`;
+        weeklyDemandChartTitle.textContent = `в•ЁР№в•Ёв•›в•¤Р’в•Ёв••в•Ёв•ўв•Ёв•њв•Ёв•Ўв•Ёв–“в•Ёв••в•Ёв•Ј в•Ёв”ђв•Ёв•›в•Ёв”ђв•Ёв••в•¤Р’ в•Ёв•–в•Ёв–‘ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•Ёв–‘в•Ёв•ќв•Ёв•• в•Ёв”¤в•Ёв•—в•¤Рџ ${productSelect}${titleSuffix}`;
     } else {
         salesDatasets = productSizes.map(size => {
             const data = filteredMonths.map(month => {
@@ -588,9 +588,9 @@ function updateChart() {
                 categoryPercentage: 0.9
             };
         });
-        const titleSuffix = selectedYear ? ` (${selectedYear} ╤А╤Ц╨║)` : '';
-        salesChartTitle.textContent = `╨Я╤А╨╛╨┤╨░╨╢╤Ц ╨╖╨░ ╤А╨╛╨╖╨╝╤Ц╤А╨░╨╝╨╕ ╨┤╨╗╤П ╨║╨╛╨╗╤М╨╛╤А╤Г ${chartType} (${productSelect})${titleSuffix}`;
-        weeklyDemandChartTitle.textContent = `╨й╨╛╤В╨╕╨╢╨╜╨╡╨▓╨╕╨╣ ╨┐╨╛╨┐╨╕╤В ╨╖╨░ ╤А╨╛╨╖╨╝╤Ц╤А╨░╨╝╨╕ ╨┤╨╗╤П ╨║╨╛╨╗╤М╨╛╤А╤Г ${chartType} (${productSelect})${titleSuffix}`;
+        const titleSuffix = selectedYear ? ` (${selectedYear} в•¤Рђв•¤Р¦в•Ёв•‘)` : '';
+        salesChartTitle.textContent = `в•ЁРЇв•¤Рђв•Ёв•›в•Ёв”¤в•Ёв–‘в•Ёв•ўв•¤Р¦ в•Ёв•–в•Ёв–‘ в•¤Рђв•Ёв•›в•Ёв•–в•Ёв•ќв•¤Р¦в•¤Рђв•Ёв–‘в•Ёв•ќв•Ёв•• в•Ёв”¤в•Ёв•—в•¤Рџ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•¤Р“ ${chartType} (${productSelect})${titleSuffix}`;
+        weeklyDemandChartTitle.textContent = `в•ЁР№в•Ёв•›в•¤Р’в•Ёв••в•Ёв•ўв•Ёв•њв•Ёв•Ўв•Ёв–“в•Ёв••в•Ёв•Ј в•Ёв”ђв•Ёв•›в•Ёв”ђв•Ёв••в•¤Р’ в•Ёв•–в•Ёв–‘ в•¤Рђв•Ёв•›в•Ёв•–в•Ёв•ќв•¤Р¦в•¤Рђв•Ёв–‘в•Ёв•ќв•Ёв•• в•Ёв”¤в•Ёв•—в•¤Рџ в•Ёв•‘в•Ёв•›в•Ёв•—в•¤Рњв•Ёв•›в•¤Рђв•¤Р“ ${chartType} (${productSelect})${titleSuffix}`;
     }
     // Update total sales
     updateTotalSales(productData, filteredMonths, chartType, salesDatasets);
@@ -612,13 +612,13 @@ function updateChart() {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: '╨Ъ╤Ц╨╗╤М╨║╤Ц╤Б╤В╤М ╨┐╤А╨╛╨┤╨░╨╢╤Ц╨▓'
+                        text: 'в•ЁРЄв•¤Р¦в•Ёв•—в•¤Рњв•Ёв•‘в•¤Р¦в•¤Р‘в•¤Р’в•¤Рњ в•Ёв”ђв•¤Рђв•Ёв•›в•Ёв”¤в•Ёв–‘в•Ёв•ўв•¤Р¦в•Ёв–“'
                     }
                 },
                 x: {
                     title: {
                         display: true,
-                        text: '╨Ь╤Ц╤Б╤П╤Ж╤Ц'
+                        text: 'в•ЁР¬в•¤Р¦в•¤Р‘в•¤Рџв•¤Р–в•¤Р¦'
                     }
                 }
             },
@@ -659,13 +659,13 @@ function updateChart() {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: '╨й╨╛╤В╨╕╨╢╨╜╨╡╨▓╨╕╨╣ ╨┐╨╛╨┐╨╕╤В (╨╛╨┤╨╕╨╜╨╕╤Ж╤М)'
+                        text: 'в•ЁР№в•Ёв•›в•¤Р’в•Ёв••в•Ёв•ўв•Ёв•њв•Ёв•Ўв•Ёв–“в•Ёв••в•Ёв•Ј в•Ёв”ђв•Ёв•›в•Ёв”ђв•Ёв••в•¤Р’ (в•Ёв•›в•Ёв”¤в•Ёв••в•Ёв•њв•Ёв••в•¤Р–в•¤Рњ)'
                     }
                 },
                 x: {
                     title: {
                         display: true,
-                        text: '╨Ь╤Ц╤Б╤П╤Ж╤Ц'
+                        text: 'в•ЁР¬в•¤Р¦в•¤Р‘в•¤Рџв•¤Р–в•¤Р¦'
                     }
                 }
             },
@@ -700,7 +700,7 @@ function init() {
     }
     updateProductSelect();
     updateChartTypes();
-    const productData = normalizedProducts[0]; // ╨Ж╨╜╤Ц╤Ж╤Ц╨░╨╗╤Ц╨╖╤Г╤Ф╨╝╨╛ ╨┐╨╡╤А╤И╨╕╨╝ ╨┐╤А╨╛╨┤╤Г╨║╤В╨╛╨╝
+    const productData = normalizedProducts[0]; // в•ЁР–в•Ёв•њв•¤Р¦в•¤Р–в•¤Р¦в•Ёв–‘в•Ёв•—в•¤Р¦в•Ёв•–в•¤Р“в•¤Р¤в•Ёв•ќв•Ёв•› в•Ёв”ђв•Ёв•Ўв•¤Рђв•¤Р�в•Ёв••в•Ёв•ќ в•Ёв”ђв•¤Рђв•Ёв•›в•Ёв”¤в•¤Р“в•Ёв•‘в•¤Р’в•Ёв•›в•Ёв•ќ
     if (productData) {
         updateYearSelect(productData);
         updateMonthSelect(productData);
@@ -759,12 +759,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const statusEl = document.getElementById('totalSales');
     try {
         if (statusEl) {
-            statusEl.innerHTML = '<p>Завантаження даних…</p>';
+            statusEl.innerHTML = '<p>Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РґР°РЅРёС…вЂ¦</p>';
         }
         await loadSalesData();
         if (!normalizedProducts.length) {
             if (statusEl) {
-                statusEl.innerHTML = '<p>Дані відсутні</p>';
+                statusEl.innerHTML = '<p>Р”Р°РЅС– РІС–РґСЃСѓС‚РЅС–</p>';
             }
             return;
         }
@@ -772,12 +772,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Failed to load sales data', error);
         if (statusEl) {
-            statusEl.innerHTML = '<p style="color: red;">Помилка завантаження даних</p>';
+            statusEl.innerHTML = '<p style="color: red;">РџРѕРјРёР»РєР° Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РґР°РЅРёС…</p>';
         }
     }
 });
+
 window.addEventListener('resize', () => {
     if (salesChart) salesChart.resize();
     if (weeklyDemandChart) weeklyDemandChart.resize();
 });
+
 
