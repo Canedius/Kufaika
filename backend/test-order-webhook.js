@@ -1,4 +1,4 @@
-import { server } from "./server.js";
+ï»¿import { server } from "./server.js";
 
 const payload = {
   event: "order.change_order_status",
@@ -8,7 +8,7 @@ const payload = {
     global_source_uuid: "test-source",
     status_id: 10,
     status_group_id: 2,
-    status_name: "Çàâåğøåíî",
+    status_name: "Ğ—Ğ°Ğ²ĞµÑ€ÑˆĞµĞ½Ğ¾",
     status_changed_at: new Date().toISOString(),
     items: [
       {
