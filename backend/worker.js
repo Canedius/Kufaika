@@ -1,4 +1,4 @@
-const sizeOrder = ["XS", "XS/S", "S", "M", "M/L", "L", "XL", "XL/XXL", "2XL", "XXL", "3XL"];
+﻿const sizeOrder = ["XS", "XS/S", "S", "M", "M/L", "L", "XL", "XL/XXL", "2XL", "XXL", "3XL"];
 
 const productCodeMap = new Map([
   ["001", "\u0425\u0443\u0434\u0456 \u0423\u0442\u0435\u043f\u043b\u0435\u043d\u0438\u0439 Kufaika Unisex"],
@@ -24,7 +24,7 @@ const colorCodeMap = new Map([
   ["OT", "\u0406\u043d\u0448\u0438\u0439 \u041a\u043e\u043b\u0456\u0440"]
 ]);
 
-const ORDER_NEGATIVE_STATUS_IDS = new Set([13, 14, 15, 16, 17, 18, 19, 29, 30, 34, 35, 36, 37, 54]);
+const ORDER_NEGATIVE_STATUS_IDS = new Set([13, 14, 15, 16, 17, 18, 19, 29, 30, 34, 35, 36, 37, 54, 52]);
 
 function jsonResponse(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {

@@ -1,4 +1,4 @@
-const DEFAULT_REMOTE_API_BASE = "https://hoodie-sales-worker.kanedius.workers.dev";
+﻿const DEFAULT_REMOTE_API_BASE = "https://hoodie-sales-worker.kanedius.workers.dev";
 const DEFAULT_LOCAL_API_BASE = "http://localhost:3000";
 
 function normalizeApiBase(value) {
@@ -776,13 +776,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 });
-        document.getElementById('totalSales').innerHTML = '<p style="color: red;">╨Я╨╛╨╝╨╕╨╗╨║╨░: ╨Ф╨░╨╜╤Ц ╨╜╨╡ ╨╖╨░╨▓╨░╨╜╤В╨░╨╢╨╡╨╜╨╛</p>';
-        return;
-    }
-    init();
-});
-// Resize charts on window resize
 window.addEventListener('resize', () => {
     if (salesChart) salesChart.resize();
     if (weeklyDemandChart) weeklyDemandChart.resize();
 });
+
