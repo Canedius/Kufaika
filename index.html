@@ -1,0 +1,54 @@
+﻿<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Продажі товарів</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script>
+        (function () {
+            const defaultRemote = 'https://hoodie-sales-worker.kanedius.workers.dev';
+            if (!window.__HOODIE_API_BASE__) {
+                window.__HOODIE_API_BASE__ = location.origin.includes('workers.dev') ? location.origin : defaultRemote;
+            }
+        })();
+    </script>
+    <script type="module" src="script.js"></script>
+</head>
+<body>
+    <h1>Продажі товарів</h1>
+    <div class="controls">
+        <label for="productSelect">Виберіть товар:</label>
+        <select id="productSelect"></select>
+        <label for="yearSelect">Виберіть рік:</label>
+        <select id="yearSelect"></select>
+        <label for="chartType">Виберіть тип графіка:</label>
+        <select id="chartType">
+            <option value="byColor">Продажі та попит за кольорами</option>
+        </select>
+    </div>
+    <div class="chart-container">
+        <div class="chart-section">
+            <h2 id="salesChartTitle">Продажі по місяцях</h2>
+            <canvas id="salesChart" style="max-height: 400px;"></canvas>
+            <div id="totalSales" class="total-sales"></div>
+        </div>
+        <div class="chart-section">
+            <h2 id="weeklyDemandChartTitle">Щотижневий попит по місяцях</h2>
+            <canvas id="weeklyDemandChart" style="max-height: 400px;"></canvas>
+            <div id="dailyDemandNumbers" class="total-sales">
+                <h3>Щоденний попит розмірів по місяцях:</h3>
+                <div class="weekly-demand-controls">
+                    <label for="monthSelect">Виберіть місяць:</label>
+                    <select id="monthSelect"></select>
+                    <label for="colorSelect">Виберіть колір:</label>
+                    <select id="colorSelect"></select>
+                </div>
+                <div id="dailyDemandList"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

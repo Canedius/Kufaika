@@ -1,0 +1,11 @@
+﻿{
+    "name":  "hoodie-sales",
+    "version":  "1.0.0",
+    "type":  "module",
+    "scripts":  {
+                    "import-data":  "node --experimental-sqlite backend/import-data.js",
+                    "dev":  "node --experimental-sqlite backend/server.js",
+                    "dev:worker":  "wrangler dev --remote",
+                    "deploy:worker":  "wrangler deploy"
+                }
+}

@@ -1,0 +1,10 @@
+﻿name = "hoodie-sales-worker"
+account_id = "70f03342534ce7274493bf4b94cbaa77"
+main = "backend/worker.js"
+compatibility_date = "2025-09-25"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hoodie-sales"
+database_id = "c3d2370a-187c-4e98-af14-50e94708ef04"
+preview_database_id = "28c9075e-8ad6-4032-aedd-e9524a06fe12"
