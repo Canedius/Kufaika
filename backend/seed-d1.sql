@@ -1926,3 +1926,47 @@ INSERT INTO sales (product_id, color_id, size_id, period_id, quantity) VALUES (5
 INSERT INTO sales (product_id, color_id, size_id, period_id, quantity) VALUES (5, 20, 1, 12, 4) ON CONFLICT(product_id, color_id, size_id, period_id) DO UPDATE SET quantity = excluded.quantity;
 INSERT INTO sales (product_id, color_id, size_id, period_id, quantity) VALUES (5, 20, 2, 12, 1) ON CONFLICT(product_id, color_id, size_id, period_id) DO UPDATE SET quantity = excluded.quantity;
 INSERT INTO sales (product_id, color_id, size_id, period_id, quantity) VALUES (5, 20, 3, 12, 1) ON CONFLICT(product_id, color_id, size_id, period_id) DO UPDATE SET quantity = excluded.quantity;
+-- Ensure Ніжно-рожевий Premium tee variants carry KeyCRM identifiers
+INSERT INTO product_variants (product_id, color_id, size_id, sku, offer_id)
+SELECT p.id, c.id, s.id, 'KUF006PKS', 4515
+FROM products p
+JOIN colors c ON c.product_id = p.id AND c.name = 'Ніжно-рожевий'
+JOIN sizes s ON s.label = 'S'
+WHERE p.name = 'Футболка Premium Kufaika'
+ON CONFLICT(product_id, color_id, size_id)
+DO UPDATE SET
+  sku = excluded.sku,
+  offer_id = excluded.offer_id;
+
+INSERT INTO product_variants (product_id, color_id, size_id, sku, offer_id)
+SELECT p.id, c.id, s.id, 'KUF006PKM', 4516
+FROM products p
+JOIN colors c ON c.product_id = p.id AND c.name = 'Ніжно-рожевий'
+JOIN sizes s ON s.label = 'M'
+WHERE p.name = 'Футболка Premium Kufaika'
+ON CONFLICT(product_id, color_id, size_id)
+DO UPDATE SET
+  sku = excluded.sku,
+  offer_id = excluded.offer_id;
+
+INSERT INTO product_variants (product_id, color_id, size_id, sku, offer_id)
+SELECT p.id, c.id, s.id, 'KUF006PKL', 4517
+FROM products p
+JOIN colors c ON c.product_id = p.id AND c.name = 'Ніжно-рожевий'
+JOIN sizes s ON s.label = 'L'
+WHERE p.name = 'Футболка Premium Kufaika'
+ON CONFLICT(product_id, color_id, size_id)
+DO UPDATE SET
+  sku = excluded.sku,
+  offer_id = excluded.offer_id;
+
+INSERT INTO product_variants (product_id, color_id, size_id, sku, offer_id)
+SELECT p.id, c.id, s.id, 'KUF006PKXL', 4518
+FROM products p
+JOIN colors c ON c.product_id = p.id AND c.name = 'Ніжно-рожевий'
+JOIN sizes s ON s.label = 'XL'
+WHERE p.name = 'Футболка Premium Kufaika'
+ON CONFLICT(product_id, color_id, size_id)
+DO UPDATE SET
+  sku = excluded.sku,
+  offer_id = excluded.offer_id;

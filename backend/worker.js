@@ -469,58 +469,119 @@ async function handleUpsertVariant(env, request) {
   return jsonResponse({ variantId: row?.id ?? null });
 }
 
+function normalizeStockItems(payload) {
+  if (!payload && payload !== 0) {
+    return [];
+  }
+  const items = Array.isArray(payload) ? payload : [payload];
+  return items.map((entry, index) => {
+    const raw = entry ?? {};
+    const rawOfferId = raw?.offer_id ?? raw?.offerId ?? null;
+    const coercedOfferId = rawOfferId === '' || rawOfferId == null ? null : Number(rawOfferId);
+    const sku = raw?.sku == null ? null : String(raw.sku).trim() || null;
+    const inStockValue = Number(raw?.in_stock ?? raw?.inStock ?? 0);
+    const inReserveValue = Number(raw?.in_reserve ?? raw?.inReserve ?? 0);
+    return {
+      index,
+      raw,
+      offerId: Number.isFinite(coercedOfferId) ? coercedOfferId : null,
+      offerIdRaw: rawOfferId,
+      sku,
+      inStock: inStockValue,
+      inReserve: inReserveValue
+    };
+  });
+}
+
 async function processStockWebhook(env, request, body) {
   const eventType = String(request.headers.get('keycrm-webhook') ?? 'stocks');
   const receivedAt = new Date().toISOString();
   const eventId = await insertWebhookEvent(env, eventType, body, 'received', receivedAt);
 
-  const offerId = body?.offer_id ?? null;
-  const sku = body?.sku ?? null;
-  const inStock = Number(body?.in_stock ?? 0);
-  const inReserve = Number(body?.in_reserve ?? 0);
-
-  if (Number.isNaN(inStock) || Number.isNaN(inReserve)) {
-    await updateWebhookStatus(env, eventId, 'failed', null, 'Invalid stock numbers');
-    return jsonResponse({ error: 'Invalid stock numbers' }, 400);
-  }
-
-  const resolveVariant = resolveVariantFactory(env);
-  const { variant } = await resolveVariant({ offerId, sku });
-
-  if (!variant) {
-    await updateWebhookStatus(env, eventId, 'pending', null, 'Variant not resolved');
-    return jsonResponse({ status: 'accepted', message: 'Variant not resolved yet', eventId }, 202);
-  }
-
-  if (sku || offerId != null) {
-    await updateVariantIdentifiers(env, variant.id, sku ?? null, offerId ?? null);
-  }
-
-  const timestamp = new Date().toISOString();
   try {
-    await env.DB.prepare('BEGIN TRANSACTION').run();
-    await env.DB.prepare(`
-      INSERT INTO inventory_levels (variant_id, in_stock, in_reserve, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(variant_id) DO UPDATE SET
-        in_stock = excluded.in_stock,
-        in_reserve = excluded.in_reserve,
-        updated_at = excluded.updated_at
-    `).bind(variant.id, inStock, inReserve, timestamp).run();
-    await env.DB.prepare(`
-      INSERT INTO inventory_history (variant_id, in_stock, in_reserve, recorded_at)
-      VALUES (?, ?, ?, ?)
-    `).bind(variant.id, inStock, inReserve, timestamp).run();
+    const stockItems = normalizeStockItems(body);
+    if (stockItems.length === 0) {
+      await updateWebhookStatus(env, eventId, 'failed', null, 'Empty stock payload');
+      return jsonResponse({ error: 'Empty stock payload', eventId }, 400);
+    }
+
+    const invalidItems = stockItems.filter(item => Number.isNaN(item.inStock) || Number.isNaN(item.inReserve));
+    if (invalidItems.length > 0) {
+      await updateWebhookStatus(env, eventId, 'failed', null, 'Invalid stock numbers');
+      return jsonResponse({
+        error: 'Invalid stock numbers',
+        eventId,
+        invalid: invalidItems.map(item => ({ index: item.index, payload: item.raw }))
+      }, 400);
+    }
+
+    const resolveVariant = resolveVariantFactory(env);
+    const resolvedItems = [];
+    const unresolvedItems = [];
+    for (const item of stockItems) {
+      const { variant } = await resolveVariant({ offerId: item.offerId, sku: item.sku });
+      if (variant) {
+        resolvedItems.push({ ...item, variant });
+      } else {
+        unresolvedItems.push({ ...item });
+      }
+    }
+
+    if (resolvedItems.length === 0) {
+      await updateWebhookStatus(env, eventId, 'pending', null, 'Variant not resolved');
+      return jsonResponse({
+        status: 'accepted',
+        message: 'Variant not resolved yet',
+        eventId,
+        unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
+      }, 202);
+    }
+
+    if (unresolvedItems.length > 0) {
+      await updateWebhookStatus(env, eventId, 'pending', null, 'One or more variants not resolved');
+      return jsonResponse({
+        status: 'accepted',
+        message: 'One or more variants not resolved',
+        eventId,
+        unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
+      }, 202);
+    }
+
+    const timestamp = new Date().toISOString();
+    const upsertInventoryLevelsSql = 'INSERT INTO inventory_levels (variant_id, in_stock, in_reserve, updated_at)\n' +
+      'VALUES (?, ?, ?, ?)\n' +
+      'ON CONFLICT(variant_id) DO UPDATE SET\n' +
+      '  in_stock = excluded.in_stock,\n' +
+      '  in_reserve = excluded.in_reserve,\n' +
+      '  updated_at = excluded.updated_at';
+    const insertInventoryHistorySql = 'INSERT INTO inventory_history (variant_id, in_stock, in_reserve, recorded_at)\n' +
+      'VALUES (?, ?, ?, ?)';
+
+    for (const item of resolvedItems) {
+      const stockValue = Math.round(item.inStock);
+      const reserveValue = Math.round(item.inReserve);
+      if (item.sku || item.offerId != null) {
+        await updateVariantIdentifiers(env, item.variant.id, item.sku ?? null, item.offerId ?? null);
+      }
+      await env.DB.prepare(upsertInventoryLevelsSql)
+        .bind(item.variant.id, stockValue, reserveValue, timestamp)
+        .run();
+      await env.DB.prepare(insertInventoryHistorySql)
+        .bind(item.variant.id, stockValue, reserveValue, timestamp)
+        .run();
+    }
     await updateWebhookStatus(env, eventId, 'processed', timestamp, null);
-    await env.DB.prepare('COMMIT').run();
-    return jsonResponse({ status: 'processed', variantId: variant.id });
+    return jsonResponse({
+      status: 'processed',
+      eventId,
+      variants: resolvedItems.map(item => ({ index: item.index, variantId: item.variant.id }))
+    });
   } catch (error) {
-    await env.DB.prepare('ROLLBACK').run();
-    await updateWebhookStatus(env, eventId, 'failed', null, error.message);
-    return jsonResponse({ error: 'Failed to persist webhook' }, 500);
+    await updateWebhookStatus(env, eventId, 'failed', null, error?.message ?? 'Unexpected error');
+    console.error('Failed to process stock webhook', { eventId, error });
+    return jsonResponse({ error: 'Failed to process stock webhook' }, 500);
   }
 }
-
 async function processOrderWebhook(env, request, body) {
   const receivedAt = new Date().toISOString();
   const eventType = String(body?.event ?? 'order.status');
@@ -552,24 +613,27 @@ async function processOrderWebhook(env, request, body) {
 
   const resolveVariant = resolveVariantFactory(env);
 
+  const insertOrderEventSql = 'INSERT INTO order_events (order_id, status_id, status_group_id, status_label, event_type, occurred_at, payload, is_negative, created_at)\n' +
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n' +
+    'RETURNING id';
+  const insertOrderEventItemSql = 'INSERT INTO order_event_items (event_id, variant_id, sku, quantity, price, payload)\n' +
+    'VALUES (?, ?, ?, ?, ?, ?)';
+
   try {
-    await env.DB.prepare('BEGIN TRANSACTION').run();
     await upsertOrder(env, orderId, context, createdAt);
-    const orderEventRow = await env.DB.prepare(`
-      INSERT INTO order_events (order_id, status_id, status_group_id, status_label, event_type, occurred_at, payload, is_negative, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      RETURNING id
-    `).bind(
-      orderId,
-      statusId ?? null,
-      statusGroupId ?? null,
-      statusLabel ?? null,
-      eventType,
-      occurredAt,
-      JSON.stringify(body ?? {}),
-      isNegative ? 1 : 0,
-      createdAt
-    ).first();
+    const orderEventRow = await env.DB.prepare(insertOrderEventSql)
+      .bind(
+        orderId,
+        statusId ?? null,
+        statusGroupId ?? null,
+        statusLabel ?? null,
+        eventType,
+        occurredAt,
+        JSON.stringify(body ?? {}),
+        isNegative ? 1 : 0,
+        createdAt
+      )
+      .first();
     const orderEventId = orderEventRow?.id;
 
     let recorded = 0;
@@ -579,30 +643,26 @@ async function processOrderWebhook(env, request, body) {
       if (variantId) {
         await updateVariantIdentifiers(env, variantId, item.sku ?? null, item.offerId ?? null);
       }
-      await env.DB.prepare(`
-        INSERT INTO order_event_items (event_id, variant_id, sku, quantity, price, payload)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(
-        orderEventId,
-        variantId,
-        item.sku ?? null,
-        item.quantity,
-        item.price ?? null,
-        JSON.stringify(item.raw ?? {})
-      ).run();
+      await env.DB.prepare(insertOrderEventItemSql)
+        .bind(
+          orderEventId,
+          variantId,
+          item.sku ?? null,
+          item.quantity,
+          item.price ?? null,
+          JSON.stringify(item.raw ?? {})
+        )
+        .run();
       recorded += 1;
     }
 
     await updateWebhookStatus(env, eventId, 'processed', createdAt, null);
-    await env.DB.prepare('COMMIT').run();
     return jsonResponse({ status: 'processed', orderId, statusId, itemsRecorded: recorded });
   } catch (error) {
-    await env.DB.prepare('ROLLBACK').run();
-    await updateWebhookStatus(env, eventId, 'failed', null, error.message);
+    await updateWebhookStatus(env, eventId, 'failed', null, error?.message ?? 'Unexpected error');
     return jsonResponse({ error: 'Failed to process order webhook' }, 500);
   }
 }
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -664,5 +724,10 @@ export default {
     return jsonResponse({ error: 'Not found' }, 404);
   }
 };
+
+
+
+
+
 
 

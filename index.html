@@ -10,12 +10,19 @@
     <script>
         (function () {
             const defaultRemote = 'https://hoodie-sales-worker.kanedius.workers.dev';
+            const localHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
             if (!window.__HOODIE_API_BASE__) {
-                window.__HOODIE_API_BASE__ = location.origin.includes('workers.dev') ? location.origin : defaultRemote;
+                if (localHosts.has(location.hostname)) {
+                    window.__HOODIE_API_BASE__ = location.origin;
+                } else if (location.origin.includes('workers.dev')) {
+                    window.__HOODIE_API_BASE__ = location.origin;
+                } else {
+                    window.__HOODIE_API_BASE__ = defaultRemote;
+                }
             }
         })();
     </script>
-    <script type="module" src="script.js"></script>
+    <script type="module" src="script.js?v=20250930"></script>
 </head>
 <body>
     <h1>Продажі товарів</h1>

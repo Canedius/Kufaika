@@ -180,6 +180,19 @@ const MONTH_INDEXES = new Map([
     ['жовтень', 9],
     ['листопад', 10],
     ['грудень', 11],
+    // legacy CP1251-encoded варіанти для старих даних
+    ['�?祭�'.toLowerCase(), 0],
+    ['��⨩'.toLowerCase(), 1],
+    ['��१���'.toLowerCase(), 2],
+    ['��?⥭�'.toLowerCase(), 3],
+    ['�ࠢ���'.toLowerCase(), 4],
+    ['�ࢥ��'.toLowerCase(), 5],
+    ['������'.toLowerCase(), 6],
+    ['�௥��'.toLowerCase(), 7],
+    ['���ᥭ�'.toLowerCase(), 8],
+    ['���⥭�'.toLowerCase(), 9],
+    ['���⮯��'.toLowerCase(), 10],
+    ['��㤥��'.toLowerCase(), 11],
 ]);
 
 function getMonthIndex(monthName) {
@@ -432,7 +445,7 @@ function updateYearSelect(productData) {
         yearSelect.innerHTML = '<option value="">Немає доступних років</option>';
         return;
     }
-    const fallbackYear = String(years[0]);
+    const fallbackYear = String(years[years.length - 1]);
     const selectedYear = years.map(String).includes(previousValue) ? previousValue : fallbackYear;
     yearSelect.value = selectedYear;
 }
@@ -451,6 +464,7 @@ function updateMonthSelect(productData) {
             .filter(month => month.year === yearSelectValue)
             .map(month => month.month)
     )).sort((a, b) => getMonthIndex(a) - getMonthIndex(b));
+    console.log('[debug] candidate months (sorted):', months);
     months.forEach(month => {
         const option = document.createElement('option');
         option.value = month;
@@ -772,12 +786,15 @@ function init() {
 }
 // Run after DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('[debug] DOMContentLoaded start');
     const statusEl = document.getElementById('totalSales');
     try {
         if (statusEl) {
             statusEl.innerHTML = '<p>Завантаження даних…</p>';
         }
+        console.log(`[debug] fetching sales data from ${API_BASE_URL}/api/sales`);
         await loadSalesData();
+        console.log('[debug] sales data loaded. products:', normalizedProducts.map(p => p.name));
         if (!normalizedProducts.length) {
             if (statusEl) {
                 statusEl.innerHTML = '<p>Дані відсутні</p>';

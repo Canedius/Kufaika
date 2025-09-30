@@ -6,7 +6,8 @@
         "import-data": "node --experimental-sqlite backend/import-data.js",
         "dev": "node --experimental-sqlite backend/server.js",
         "dev:worker": "wrangler dev --remote",
-        "deploy:worker": "wrangler deploy"
+        "deploy:worker": "wrangler deploy",
+        "reprocess:stocks": "node --experimental-sqlite backend/reprocess-stocks.js"
     },
     "dependencies": {
         "iconv-lite": "^0.7.0"

@@ -136,6 +136,28 @@ const insertInventoryHistoryStmt = db.prepare(`
   INSERT INTO inventory_history (variant_id, in_stock, in_reserve, recorded_at)
   VALUES (?, ?, ?, ?)
 `);
+const selectInventoryLevelStmt = db.prepare(`
+  SELECT in_stock, in_reserve FROM inventory_levels WHERE variant_id = ?
+`);
+const upsertPeriodStmt = db.prepare(`
+  INSERT INTO periods (year, month, label)
+  VALUES (?, ?, ?)
+  ON CONFLICT(year, label) DO UPDATE SET month = excluded.month
+  RETURNING id
+`);
+const upsertSalesStmt = db.prepare(`
+  INSERT INTO sales (product_id, color_id, size_id, period_id, quantity)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(product_id, color_id, size_id, period_id)
+  DO UPDATE SET quantity = MAX(sales.quantity + excluded.quantity, 0)
+  RETURNING quantity
+`);
+const selectSalesQuantityStmt = db.prepare(`
+  SELECT quantity FROM sales WHERE product_id = ? AND color_id = ? AND size_id = ? AND period_id = ?
+`);
+const selectVariantByIdStmt = db.prepare(`
+  SELECT id, product_id, color_id, size_id FROM product_variants WHERE id = ?
+`);
 const insertWebhookEventStmt = db.prepare(`
   INSERT INTO webhook_events (event_type, payload, status, received_at)
   VALUES (?, ?, ?, ?)
@@ -369,6 +391,95 @@ export function resolveVariant({ offerId = null, sku = null, decoded = null }) {
   }
   return { variant, decoded: usedDecoded };
 }
+const monthFormatter = new Intl.DateTimeFormat('uk-UA', { month: 'long' });
+
+function normalizeMonthLabel(date) {
+  const raw = monthFormatter.format(date);
+  const value = raw?.trim() ?? '';
+  if (!value) {
+    return '';
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function ensurePeriodForTimestamp(isoString) {
+  const parsed = isoString ? new Date(isoString) : new Date();
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const year = parsed.getUTCFullYear();
+  const monthNumber = parsed.getUTCMonth() + 1;
+  const label = normalizeMonthLabel(parsed);
+  if (!label) {
+    return null;
+  }
+  const row = upsertPeriodStmt.get(year, monthNumber, label);
+  return row?.id ?? null;
+}
+
+function recordSalesDelta(variant, delta, occurredAt) {
+  if (!variant || !variant.id || !Number.isFinite(delta) || delta === 0) {
+    return;
+  }
+  let { product_id: productId, color_id: colorId, size_id: sizeId } = variant;
+  if (!productId || !colorId || !sizeId) {
+    const fallback = selectVariantByIdStmt.get(variant.id);
+    if (!fallback) {
+      return;
+    }
+    productId = fallback.product_id;
+    colorId = fallback.color_id;
+    sizeId = fallback.size_id;
+  }
+  if (!productId || !colorId || !sizeId) {
+    return;
+  }
+  const periodId = ensurePeriodForTimestamp(occurredAt);
+  if (!periodId) {
+    return;
+  }
+  const rounded = Math.round(delta);
+  if (rounded === 0) {
+    return;
+  }
+  if (rounded > 0) {
+    upsertSalesStmt.get(productId, colorId, sizeId, periodId, rounded);
+    return;
+  }
+  const existing = selectSalesQuantityStmt.get(productId, colorId, sizeId, periodId);
+  if (!existing || !Number.isFinite(existing.quantity) || existing.quantity <= 0) {
+    return;
+  }
+  const toSubtract = Math.min(existing.quantity, Math.abs(rounded));
+  if (toSubtract <= 0) {
+    return;
+  }
+  upsertSalesStmt.get(productId, colorId, sizeId, periodId, -toSubtract);
+}
+
+
+async function fetchOrderDetails(orderId) {
+  const token = process.env.KEYCRM_API_TOKEN;
+  if (!token) {
+    return null;
+  }
+  const url = `https://openapi.keycrm.app/v1/order/${orderId}?include=products.offer`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`KeyCRM API request failed: ${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`Failed to fetch order ${orderId} details from KeyCRM`, error);
+    return null;
+  }
+}
 
 function extractOrderItems(context = {}, body = {}) {
   const lists = [context.items, context.products, context.positions, context.lines, body.items];
@@ -574,52 +685,137 @@ function handleWebhook(req, res) {
     });
 }
 
+function normalizeStockItems(payload) {
+  if (!payload && payload !== 0) {
+    return [];
+  }
+  const items = Array.isArray(payload) ? payload : [payload];
+  return items.map((entry, index) => {
+    const raw = entry ?? {};
+    const rawOfferId = raw?.offer_id ?? raw?.offerId ?? null;
+    const coercedOfferId = rawOfferId === '' || rawOfferId == null ? null : Number(rawOfferId);
+    const sku = raw?.sku == null ? null : String(raw.sku).trim() || null;
+    const inStockValue = Number(raw?.in_stock ?? raw?.inStock ?? 0);
+    const inReserveValue = Number(raw?.in_reserve ?? raw?.inReserve ?? 0);
+    return {
+      index,
+      raw,
+      offerId: Number.isFinite(coercedOfferId) ? coercedOfferId : null,
+      offerIdRaw: rawOfferId,
+      sku,
+      inStock: inStockValue,
+      inReserve: inReserveValue
+    };
+  });
+}
+
 function processStockWebhook(req, res, body) {
   const eventType = String(req.headers['keycrm-webhook'] ?? 'stocks');
   const receivedAt = new Date().toISOString();
   const eventRow = insertWebhookEventStmt.get(eventType, JSON.stringify(body ?? {}), 'received', receivedAt);
   const eventId = eventRow.id;
 
-  const offerId = body?.offer_id ?? null;
-  const sku = body?.sku ?? null;
-  const inStock = Number(body?.in_stock ?? 0);
-  const inReserve = Number(body?.in_reserve ?? 0);
-
-  if (Number.isNaN(inStock) || Number.isNaN(inReserve)) {
-    updateWebhookStatusStmt.run('failed', null, 'Invalid stock values', eventId);
-    sendJson(res, 400, { error: 'Invalid stock numbers' });
-    return;
-  }
-
-  const { variant } = resolveVariant({ offerId, sku });
-
-  if (!variant) {
-    updateWebhookStatusStmt.run('pending', null, 'Variant not resolved', eventId);
-    sendJson(res, 202, { status: 'accepted', message: 'Variant not resolved yet', eventId });
-    return;
-  }
-
-  if (sku || offerId != null) {
-    updateVariantIdentifiersStmt.run(sku ?? null, offerId ?? null, variant.id);
-  }
-
-  const timestamp = new Date().toISOString();
-
   try {
-    db.exec('BEGIN IMMEDIATE');
-    insertInventoryLevelStmt.run(variant.id, inStock, inReserve, timestamp);
-    insertInventoryHistoryStmt.run(variant.id, inStock, inReserve, timestamp);
-    updateWebhookStatusStmt.run('processed', timestamp, null, eventId);
-    db.exec('COMMIT');
-    sendJson(res, 200, { status: 'processed', variantId: variant.id });
+    const stockItems = normalizeStockItems(body);
+    if (stockItems.length === 0) {
+      updateWebhookStatusStmt.run('failed', null, 'Empty stock payload', eventId);
+      sendJson(res, 400, { error: 'Empty stock payload', eventId });
+      return;
+    }
+
+    const invalidItems = stockItems.filter(item => Number.isNaN(item.inStock) || Number.isNaN(item.inReserve));
+    if (invalidItems.length > 0) {
+      updateWebhookStatusStmt.run('failed', null, 'Invalid stock numbers', eventId);
+      sendJson(res, 400, {
+        error: 'Invalid stock numbers',
+        eventId,
+        invalid: invalidItems.map(item => ({ index: item.index, payload: item.raw }))
+      });
+      return;
+    }
+
+    const resolvedItems = [];
+    const unresolvedItems = [];
+    for (const item of stockItems) {
+      const { variant } = resolveVariant({ offerId: item.offerId, sku: item.sku });
+      if (variant) {
+        resolvedItems.push({ ...item, variant });
+      } else {
+        unresolvedItems.push({ ...item });
+      }
+    }
+
+    if (resolvedItems.length === 0) {
+      updateWebhookStatusStmt.run('pending', null, 'Variant not resolved', eventId);
+      sendJson(res, 202, {
+        status: 'accepted',
+        message: 'Variant not resolved yet',
+        eventId,
+        unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
+      });
+      return;
+    }
+
+    if (unresolvedItems.length > 0) {
+      updateWebhookStatusStmt.run('pending', null, 'One or more variants not resolved', eventId);
+      sendJson(res, 202, {
+        status: 'accepted',
+        message: 'One or more variants not resolved',
+        eventId,
+        unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
+      });
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      for (const item of resolvedItems) {
+        const stockValue = Math.round(item.inStock);
+        const reserveValue = Math.round(item.inReserve);
+        const previousLevel = selectInventoryLevelStmt.get(item.variant.id);
+        let stockDelta = 0;
+        if (previousLevel && previousLevel.in_stock != null) {
+          const previousStock = Number(previousLevel.in_stock);
+          if (Number.isFinite(previousStock)) {
+            const diff = previousStock - stockValue;
+            if (Number.isFinite(diff) && diff !== 0) {
+              stockDelta = Math.round(diff);
+            }
+          }
+        }
+        if (item.sku || item.offerId != null) {
+          updateVariantIdentifiersStmt.run(item.sku ?? null, item.offerId ?? null, item.variant.id);
+        }
+        insertInventoryLevelStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
+        insertInventoryHistoryStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
+        if (stockDelta !== 0) {
+          recordSalesDelta(item.variant, stockDelta, timestamp);
+        }
+      }
+      updateWebhookStatusStmt.run('processed', timestamp, null, eventId);
+      db.exec('COMMIT');
+      sendJson(res, 200, {
+        status: 'processed',
+        eventId,
+        variants: resolvedItems.map(item => ({ index: item.index, variantId: item.variant.id }))
+      });
+      return;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      updateWebhookStatusStmt.run('failed', null, error?.message ?? 'Failed to persist webhook', eventId);
+      sendJson(res, 500, { error: 'Failed to persist webhook' });
+      return;
+    }
   } catch (error) {
-    db.exec('ROLLBACK');
-    updateWebhookStatusStmt.run('failed', null, error.message, eventId);
-    sendJson(res, 500, { error: 'Failed to persist webhook' });
+    updateWebhookStatusStmt.run('failed', null, error?.message ?? 'Unexpected error', eventId);
+    console.error('Failed to process stock webhook', error);
+    sendJson(res, 500, { error: 'Failed to process stock webhook' });
   }
 }
 
-function handleOrderWebhook(req, res) {
+
+async function handleOrderWebhook(req, res) {
   if (req.method === 'OPTIONS') {
     sendJson(res, 200, {});
     return;
@@ -628,12 +824,16 @@ function handleOrderWebhook(req, res) {
     methodNotAllowed(res);
     return;
   }
-  readJsonBody(req)
-    .then(body => processOrderWebhook(req, res, body))
-    .catch(error => sendJson(res, 400, { error: error.message }));
+  try {
+    const body = await readJsonBody(req);
+    await processOrderWebhook(req, res, body);
+  } catch (error) {
+    console.error('Failed to handle order webhook', error);
+    sendJson(res, 400, { error: error?.message ?? 'Invalid webhook payload' });
+  }
 }
 
-function processOrderWebhook(req, res, body) {
+async function processOrderWebhook(req, res, body) {
   const eventType = String(body?.event ?? 'order.status');
   const receivedAt = new Date().toISOString();
   const eventRow = insertWebhookEventStmt.get(eventType, JSON.stringify(body ?? {}), 'received', receivedAt);
@@ -656,9 +856,18 @@ function processOrderWebhook(req, res, body) {
   const isNegative = statusId != null && ORDER_NEGATIVE_STATUS_IDS.has(statusId);
 
   const rawItems = extractOrderItems(context, body);
-  const normalizedItems = rawItems
+  let normalizedItems = rawItems
     .map(normalizeOrderItem)
     .filter(item => item && item.quantity !== 0 && (item.sku || item.offerId != null));
+
+  if (normalizedItems.length === 0 && isNegative) {
+    const apiDetails = await fetchOrderDetails(orderId);
+    if (apiDetails?.products) {
+      normalizedItems = apiDetails.products
+        .map(normalizeOrderItem)
+        .filter(item => item && item.quantity !== 0 && (item.sku || item.offerId != null));
+    }
+  }
 
   try {
     db.exec('BEGIN IMMEDIATE');
