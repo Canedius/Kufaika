@@ -26,6 +26,101 @@ const colorCodeMap = new Map([
 
 const ORDER_NEGATIVE_STATUS_IDS = new Set([13, 14, 15, 16, 17, 18, 19, 29, 30, 34, 35, 36, 37, 54, 52]);
 
+const monthFormatter = new Intl.DateTimeFormat('uk-UA', { month: 'long' });
+
+function normalizeMonthLabel(date) {
+  const raw = monthFormatter.format(date);
+  const value = raw?.trim() ?? '';
+  if (!value) {
+    return '';
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+async function ensurePeriodForTimestamp(env, isoString) {
+  const parsed = isoString ? new Date(isoString) : new Date();
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const year = parsed.getUTCFullYear();
+  const monthNumber = parsed.getUTCMonth() + 1;
+  const label = normalizeMonthLabel(parsed);
+  if (!label) {
+    return null;
+  }
+  const upsertPeriodSql = `
+    INSERT INTO periods (year, month, label)
+    VALUES (?, ?, ?)
+    ON CONFLICT(year, label) DO UPDATE SET month = excluded.month
+    RETURNING id
+  `;
+  const row = await env.DB.prepare(upsertPeriodSql)
+    .bind(year, monthNumber, label)
+    .first();
+  return row?.id ?? null;
+}
+
+async function recordSalesDelta(env, variant, delta, occurredAt) {
+  if (!variant || !variant.id || !Number.isFinite(delta) || delta === 0) {
+    return;
+  }
+  let { product_id: productId, color_id: colorId, size_id: sizeId } = variant;
+  if (!productId || !colorId || !sizeId) {
+    const fallback = await env.DB.prepare(
+      'SELECT id, product_id, color_id, size_id FROM product_variants WHERE id = ?'
+    )
+      .bind(variant.id)
+      .first();
+    if (!fallback) {
+      return;
+    }
+    productId = fallback.product_id;
+    colorId = fallback.color_id;
+    sizeId = fallback.size_id;
+  }
+  if (!productId || !colorId || !sizeId) {
+    return;
+  }
+  const periodId = await ensurePeriodForTimestamp(env, occurredAt);
+  if (!periodId) {
+    return;
+  }
+  const rounded = Math.round(delta);
+  if (rounded === 0) {
+    return;
+  }
+
+  const upsertSalesSql = `
+    INSERT INTO sales (product_id, color_id, size_id, period_id, quantity)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(product_id, color_id, size_id, period_id)
+    DO UPDATE SET quantity = MAX(sales.quantity + excluded.quantity, 0)
+    RETURNING quantity
+  `;
+  if (rounded > 0) {
+    await env.DB.prepare(upsertSalesSql)
+      .bind(productId, colorId, sizeId, periodId, rounded)
+      .first();
+    return;
+  }
+
+  const existingRow = await env.DB.prepare(
+    'SELECT quantity FROM sales WHERE product_id = ? AND color_id = ? AND size_id = ? AND period_id = ?'
+  )
+    .bind(productId, colorId, sizeId, periodId)
+    .first();
+  if (!existingRow || !Number.isFinite(existingRow.quantity) || existingRow.quantity <= 0) {
+    return;
+  }
+  const toSubtract = Math.min(existingRow.quantity, Math.abs(rounded));
+  if (toSubtract <= 0) {
+    return;
+  }
+  await env.DB.prepare(upsertSalesSql)
+    .bind(productId, colorId, sizeId, periodId, -toSubtract)
+    .first();
+}
+
 function jsonResponse(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -557,9 +652,24 @@ async function processStockWebhook(env, request, body) {
     const insertInventoryHistorySql = 'INSERT INTO inventory_history (variant_id, in_stock, in_reserve, recorded_at)\n' +
       'VALUES (?, ?, ?, ?)';
 
+    const selectInventoryLevelSql = 'SELECT in_stock FROM inventory_levels WHERE variant_id = ?';
+
     for (const item of resolvedItems) {
       const stockValue = Math.round(item.inStock);
       const reserveValue = Math.round(item.inReserve);
+      let stockDelta = 0;
+      const previousLevel = await env.DB.prepare(selectInventoryLevelSql)
+        .bind(item.variant.id)
+        .first();
+      if (previousLevel && previousLevel.in_stock != null) {
+        const previousStock = Number(previousLevel.in_stock);
+        if (Number.isFinite(previousStock)) {
+          const diff = previousStock - stockValue;
+          if (Number.isFinite(diff) && diff !== 0) {
+            stockDelta = Math.round(diff);
+          }
+        }
+      }
       if (item.sku || item.offerId != null) {
         await updateVariantIdentifiers(env, item.variant.id, item.sku ?? null, item.offerId ?? null);
       }
@@ -569,6 +679,9 @@ async function processStockWebhook(env, request, body) {
       await env.DB.prepare(insertInventoryHistorySql)
         .bind(item.variant.id, stockValue, reserveValue, timestamp)
         .run();
+      if (stockDelta !== 0) {
+        await recordSalesDelta(env, item.variant, stockDelta, timestamp);
+      }
     }
     await updateWebhookStatus(env, eventId, 'processed', timestamp, null);
     return jsonResponse({
@@ -654,6 +767,16 @@ async function processOrderWebhook(env, request, body) {
         )
         .run();
       recorded += 1;
+
+      const resolvedForDelta = variant ?? (variantId ? { id: variantId } : null);
+      const rawQuantity = Number(item.quantity);
+      if (resolvedForDelta && Number.isFinite(rawQuantity) && rawQuantity !== 0) {
+        const magnitude = Math.abs(rawQuantity);
+        const signedDelta = isNegative ? -magnitude : magnitude;
+        if (signedDelta !== 0) {
+          await recordSalesDelta(env, resolvedForDelta, signedDelta, occurredAt);
+        }
+      }
     }
 
     await updateWebhookStatus(env, eventId, 'processed', createdAt, null);
