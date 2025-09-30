@@ -1,6 +1,16 @@
-﻿import { writeFileSync } from "node:fs";
+﻿import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { salesData } from "../sales-data.js";
+import { salesData as legacySalesData } from "../sales-data.js";
+
+let salesData = legacySalesData;
+
+try {
+  const raw = readFileSync(new URL("../sales.json", import.meta.url), "utf8");
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed?.products) && parsed.products.length > 0) {
+    salesData = parsed;
+  }
+} catch {}
 
 const monthMap = new Map([
   ["Січень", 1],
