@@ -417,7 +417,7 @@ function ensurePeriodForTimestamp(isoString) {
   return row?.id ?? null;
 }
 
-function recordSalesDelta(variant, delta, occurredAt) {
+export function recordSalesDelta(variant, delta, occurredAt) {
   if (!variant || !variant.id || !Number.isFinite(delta) || delta === 0) {
     return;
   }
@@ -910,6 +910,16 @@ async function processOrderWebhook(req, res, body) {
         item.price ?? null,
         JSON.stringify(item.raw ?? {})
       );
+
+      const resolvedForDelta = variant ?? (variantId ? { id: variantId } : null);
+      const rawQuantity = Number(item.quantity);
+      if (resolvedForDelta && Number.isFinite(rawQuantity) && rawQuantity !== 0) {
+        const magnitude = Math.abs(rawQuantity);
+        const signedDelta = isNegative ? -magnitude : magnitude;
+        if (signedDelta !== 0) {
+          recordSalesDelta(resolvedForDelta, signedDelta, occurredAt);
+        }
+      }
     }
 
     updateWebhookStatusStmt.run('processed', createdAt, null, webhookEventId);
