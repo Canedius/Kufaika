@@ -1,5 +1,5 @@
 ﻿import { db } from "./db.js";
-import { resolveVariant } from "./server.js";
+import { resolveVariant, recordSalesDelta } from "./server.js";
 
 const selectPendingEventsStmt = db.prepare(`
   SELECT id, payload
@@ -23,6 +23,9 @@ const insertInventoryLevelStmt = db.prepare(`
 const insertInventoryHistoryStmt = db.prepare(`
   INSERT INTO inventory_history (variant_id, in_stock, in_reserve, recorded_at)
   VALUES (?, ?, ?, ?)
+`);
+const selectInventoryLevelStmt = db.prepare(`
+  SELECT in_stock FROM inventory_levels WHERE variant_id = ?
 `);
 const updateWebhookStatusStmt = db.prepare(`
   UPDATE webhook_events SET status = ?, processed_at = ?, error = ? WHERE id = ?
@@ -87,33 +90,45 @@ function processEvent(eventId, payload) {
       unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
     };
   }
-  if (unresolvedItems.length > 0) {
-    updateWebhookStatusStmt.run('pending', null, 'One or more variants not resolved', eventId);
-    return {
-      status: 'partial',
-      reason: 'unresolved variants',
-      unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
-    };
-  }
-
+  const hasUnresolved = unresolvedItems.length > 0;
   const timestamp = new Date().toISOString();
   try {
     db.exec('BEGIN IMMEDIATE');
     for (const item of resolvedItems) {
       const stockValue = Math.round(item.inStock);
       const reserveValue = Math.round(item.inReserve);
+      let stockDelta = 0;
+      const previousLevel = selectInventoryLevelStmt.get(item.variant.id);
+      if (previousLevel && previousLevel.in_stock != null) {
+        const previousStock = Number(previousLevel.in_stock);
+        if (Number.isFinite(previousStock)) {
+          const diff = previousStock - stockValue;
+          if (Number.isFinite(diff) && diff !== 0) {
+            stockDelta = Math.round(diff);
+          }
+        }
+      }
       if (item.sku || item.offerId != null) {
         updateVariantIdentifiersStmt.run(item.sku ?? null, item.offerId ?? null, item.variant.id);
       }
       insertInventoryLevelStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
       insertInventoryHistoryStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
+      if (stockDelta > 0) {
+        recordSalesDelta(item.variant, stockDelta, timestamp);
+      }
     }
-    updateWebhookStatusStmt.run('processed', timestamp, null, eventId);
+    const statusLabel = hasUnresolved ? 'processed_with_warnings' : 'processed';
+    updateWebhookStatusStmt.run(statusLabel, timestamp, null, eventId);
     db.exec('COMMIT');
-    return {
-      status: 'processed',
+    const result = {
+      status: statusLabel,
       variants: resolvedItems.map(item => ({ index: item.index, variantId: item.variant.id }))
     };
+    if (hasUnresolved) {
+      result.unresolved = unresolvedItems.map(item => ({ index: item.index, payload: item.raw }));
+      result.message = 'Processed with unresolved variants';
+    }
+    return result;
   } catch (error) {
     db.exec('ROLLBACK');
     updateWebhookStatusStmt.run('failed', null, error.message, eventId);

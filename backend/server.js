@@ -110,6 +110,12 @@ const selectVariantBySkuStmt = db.prepare(`
 const selectVariantByOfferStmt = db.prepare(`
   SELECT id, product_id, color_id, size_id, sku, offer_id FROM product_variants WHERE offer_id = ?
 `);
+const selectVariantByAttributesStmt = db.prepare(`
+  SELECT id, product_id, color_id, size_id, sku, offer_id
+  FROM product_variants
+  WHERE product_id = ? AND color_id = ? AND size_id = ?
+  LIMIT 1
+`);
 const upsertVariantStmt = db.prepare(`
   INSERT INTO product_variants (product_id, color_id, size_id, sku, offer_id)
   VALUES (?, ?, ?, ?, ?)
@@ -375,16 +381,11 @@ export function resolveVariant({ offerId = null, sku = null, decoded = null }) {
           if (!colorRow) {
             continue;
           }
-          const candidate = upsertVariantStmt.get(product.id, colorRow.id, sizeRow.id, sku ?? null, offerId ?? null);
-          variant = {
-            id: candidate.id,
-            product_id: product.id,
-            color_id: colorRow.id,
-            size_id: sizeRow.id,
-            sku: sku ?? null,
-            offer_id: offerId ?? null
-          };
-          break;
+          const candidate = selectVariantByAttributesStmt.get(product.id, colorRow.id, sizeRow.id);
+          if (candidate) {
+            variant = candidate;
+            break;
+          }
         }
       }
     }
@@ -417,7 +418,7 @@ function ensurePeriodForTimestamp(isoString) {
   return row?.id ?? null;
 }
 
-function recordSalesDelta(variant, delta, occurredAt) {
+export function recordSalesDelta(variant, delta, occurredAt) {
   if (!variant || !variant.id || !Number.isFinite(delta) || delta === 0) {
     return;
   }
@@ -756,17 +757,7 @@ function processStockWebhook(req, res, body) {
       return;
     }
 
-    if (unresolvedItems.length > 0) {
-      updateWebhookStatusStmt.run('pending', null, 'One or more variants not resolved', eventId);
-      sendJson(res, 202, {
-        status: 'accepted',
-        message: 'One or more variants not resolved',
-        eventId,
-        unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
-      });
-      return;
-    }
-
+    const hasUnresolved = unresolvedItems.length > 0;
     const timestamp = new Date().toISOString();
     try {
       db.exec('BEGIN IMMEDIATE');
@@ -789,17 +780,24 @@ function processStockWebhook(req, res, body) {
         }
         insertInventoryLevelStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
         insertInventoryHistoryStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
-        if (stockDelta !== 0) {
+        if (stockDelta > 0) {
           recordSalesDelta(item.variant, stockDelta, timestamp);
         }
       }
-      updateWebhookStatusStmt.run('processed', timestamp, null, eventId);
+      const statusLabel = hasUnresolved ? 'processed_with_warnings' : 'processed';
+      updateWebhookStatusStmt.run(statusLabel, timestamp, null, eventId);
       db.exec('COMMIT');
-      sendJson(res, 200, {
-        status: 'processed',
+      const payload = {
+        status: statusLabel,
         eventId,
         variants: resolvedItems.map(item => ({ index: item.index, variantId: item.variant.id }))
-      });
+      };
+      if (hasUnresolved) {
+        payload.message = 'Processed with unresolved variants';
+        payload.unresolved = unresolvedItems.map(item => ({ index: item.index, payload: item.raw }));
+        console.warn('Stock webhook processed with unresolved variants', { eventId, unresolved: payload.unresolved.length });
+      }
+      sendJson(res, 200, payload);
       return;
     } catch (error) {
       db.exec('ROLLBACK');
@@ -910,6 +908,16 @@ async function processOrderWebhook(req, res, body) {
         item.price ?? null,
         JSON.stringify(item.raw ?? {})
       );
+
+      const resolvedForDelta = variant ?? (variantId ? { id: variantId } : null);
+      const rawQuantity = Number(item.quantity);
+      if (resolvedForDelta && Number.isFinite(rawQuantity) && rawQuantity !== 0) {
+        const magnitude = Math.abs(rawQuantity);
+        const signedDelta = isNegative ? -magnitude : magnitude;
+        if (signedDelta !== 0) {
+          recordSalesDelta(resolvedForDelta, signedDelta, occurredAt);
+        }
+      }
     }
 
     updateWebhookStatusStmt.run('processed', createdAt, null, webhookEventId);
