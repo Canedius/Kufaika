@@ -43,9 +43,12 @@ let API_BASE_URL = resolveInitialApiBase();
 let salesData = { products: [] };
 let normalizedProducts = [];
 let salesDataLoaded = false;
+let chartDataLabelsRegistered = false;
+let dashboardInitialized = false;
 
-async function loadSalesData() {
-    if (salesDataLoaded) {
+async function loadSalesData(options = {}) {
+    const { force = false } = options;
+    if (salesDataLoaded && !force) {
         return salesData;
     }
     const candidates = buildApiCandidates();
@@ -512,6 +515,7 @@ function updateColorSelect(productData) {
 // Function to update product dropdown
 function updateProductSelect() {
     const productSelect = document.getElementById('productSelect');
+    const previousValue = productSelect.value;
     productSelect.innerHTML = '';
     if (!normalizedProducts || normalizedProducts.length === 0) {
         productSelect.innerHTML = '<option value="">Немає доступних товарів</option>';
@@ -525,6 +529,12 @@ function updateProductSelect() {
         option.textContent = product.name;
         productSelect.appendChild(option);
     });
+    const fallbackValue = normalizedProducts[0]?.name || '';
+    const hasPreviousValue = normalizedProducts.some(product => product.name === previousValue);
+    const nextValue = hasPreviousValue ? previousValue : fallbackValue;
+    if (nextValue) {
+        productSelect.value = nextValue;
+    }
     console.log('Product select updated with', normalizedProducts.length, 'products');
 }
 // Function to update chart type dropdown
@@ -719,75 +729,130 @@ function updateChart() {
     });
     console.log('Charts updated for', productSelect, 'with type', chartType);
 }
+
+function updateSelectorsForCurrentProduct() {
+    const productSelectElement = document.getElementById('productSelect');
+    if (!productSelectElement) {
+        console.error('Product select element not found');
+        return;
+    }
+    const productData = getProductByName(productSelectElement.value);
+    if (!productData) {
+        console.error('Product not found for current selection');
+        return;
+    }
+    updateYearSelect(productData);
+    updateMonthSelect(productData);
+    updateColorSelect(productData);
+    updateDailyDemandNumbers(productData);
+    updateChart();
+}
+
+function rebuildDashboardState() {
+    const productSelectElement = document.getElementById('productSelect');
+    updateProductSelect();
+    if (!normalizedProducts || normalizedProducts.length === 0) {
+        return;
+    }
+    if (productSelectElement && !productSelectElement.value) {
+        const firstOption = productSelectElement.options[0];
+        if (firstOption) {
+            productSelectElement.value = firstOption.value;
+        }
+    }
+    updateChartTypes();
+    updateSelectorsForCurrentProduct();
+}
 // Function to initialize
 function init() {
     console.log('Init started. salesData:', salesData ? 'defined' : 'undefined');
-    if (typeof ChartDataLabels !== 'undefined') {
-        Chart.register(ChartDataLabels);
-        console.log('ChartDataLabels registered');
-    } else {
-        console.warn('ChartDataLabels not loaded');
+    if (!chartDataLabelsRegistered) {
+        if (typeof ChartDataLabels !== 'undefined') {
+            Chart.register(ChartDataLabels);
+            chartDataLabelsRegistered = true;
+            console.log('ChartDataLabels registered');
+        } else {
+            console.warn('ChartDataLabels not loaded');
+        }
     }
-    updateProductSelect();
-    updateChartTypes();
-    const productData = normalizedProducts[0]; // Використовуємо перший продукт як початковий вибір
-    if (productData) {
-        updateYearSelect(productData);
-        updateMonthSelect(productData);
-        updateColorSelect(productData);
-        updateDailyDemandNumbers(productData);
+    rebuildDashboardState();
+    if (!dashboardInitialized) {
+        document.getElementById('productSelect').addEventListener('change', () => {
+            updateChartTypes();
+            updateSelectorsForCurrentProduct();
+        });
+        document.getElementById('chartType').addEventListener('change', () => {
+            updateChart();
+        });
+        document.getElementById('yearSelect').addEventListener('change', () => {
+            const productData = getProductByName(document.getElementById('productSelect').value);
+            if (!productData) {
+                console.error('Product not found when year changed');
+                return;
+            }
+            updateMonthSelect(productData);
+            updateColorSelect(productData);
+            updateDailyDemandNumbers(productData);
+            updateChart();
+        });
+        document.getElementById('monthSelect').addEventListener('change', () => {
+            const productData = getProductByName(document.getElementById('productSelect').value);
+            if (!productData) {
+                console.error('Product not found when month changed');
+                return;
+            }
+            updateColorSelect(productData);
+            updateDailyDemandNumbers(productData);
+        });
+        document.getElementById('colorSelect').addEventListener('change', () => {
+            const productData = getProductByName(document.getElementById('productSelect').value);
+            if (!productData) {
+                console.error('Product not found when color changed');
+                return;
+            }
+            updateDailyDemandNumbers(productData);
+            updateChart();
+        });
+        dashboardInitialized = true;
     }
-    updateChart();
-    document.getElementById('productSelect').addEventListener('change', () => {
-        updateChartTypes();
-        const productData = getProductByName(document.getElementById('productSelect').value);
-        if (!productData) {
-            console.error('Product not found for selection change');
-            return;
+}
+
+async function refreshDashboard() {
+    const refreshButton = document.getElementById('refreshButton');
+    const statusEl = document.getElementById('totalSales');
+    const originalLabel = refreshButton ? refreshButton.textContent : '';
+    try {
+        if (refreshButton) {
+            refreshButton.disabled = true;
+            refreshButton.textContent = 'Оновлення…';
         }
-        updateYearSelect(productData);
-        updateMonthSelect(productData);
-        updateColorSelect(productData);
-        updateDailyDemandNumbers(productData);
-        updateChart();
-    });
-    document.getElementById('chartType').addEventListener('change', () => {
-        updateChart();
-    });
-    document.getElementById('yearSelect').addEventListener('change', () => {
-        const productData = getProductByName(document.getElementById('productSelect').value);
-        if (!productData) {
-            console.error('Product not found when year changed');
-            return;
+        if (statusEl) {
+            statusEl.innerHTML = '<p>Оновлення даних…</p>';
         }
-        updateMonthSelect(productData);
-        updateColorSelect(productData);
-        updateDailyDemandNumbers(productData);
-        updateChart();
-    });
-    document.getElementById('monthSelect').addEventListener('change', () => {
-        const productData = getProductByName(document.getElementById('productSelect').value);
-        if (!productData) {
-            console.error('Product not found when month changed');
-            return;
+        await loadSalesData({ force: true });
+        rebuildDashboardState();
+    } catch (error) {
+        console.error('Failed to refresh dashboard', error);
+        if (statusEl) {
+            statusEl.innerHTML = '<p style="color: red;">Не вдалося оновити дані</p>';
         }
-        updateColorSelect(productData);
-        updateDailyDemandNumbers(productData);
-    });
-    document.getElementById('colorSelect').addEventListener('change', () => {
-        const productData = getProductByName(document.getElementById('productSelect').value);
-        if (!productData) {
-            console.error('Product not found when color changed');
-            return;
+    } finally {
+        if (refreshButton) {
+            refreshButton.disabled = false;
+            refreshButton.textContent = originalLabel || 'Оновити дані';
         }
-        updateDailyDemandNumbers(productData);
-        updateChart();
-    });
+    }
 }
 // Run after DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('[debug] DOMContentLoaded start');
     const statusEl = document.getElementById('totalSales');
+    const refreshButton = document.getElementById('refreshButton');
+    if (refreshButton) {
+        refreshButton.addEventListener('click', () => {
+            refreshDashboard();
+        });
+    }
     try {
         if (statusEl) {
             statusEl.innerHTML = '<p>Завантаження даних…</p>';
@@ -809,6 +874,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 });
+
+window.refreshDashboard = refreshDashboard;
 
 window.addEventListener('resize', () => {
     if (salesChart) salesChart.resize();
