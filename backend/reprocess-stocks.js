@@ -113,7 +113,6 @@ function processEvent(eventId, payload) {
       }
       insertInventoryLevelStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
       insertInventoryHistoryStmt.run(item.variant.id, stockValue, reserveValue, timestamp);
-      if (stockDelta > 0) {
       if (stockDelta !== 0) {
         recordSalesDelta(item.variant, stockDelta, timestamp);
       }

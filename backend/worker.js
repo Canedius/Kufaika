@@ -675,7 +675,6 @@ async function processStockWebhook(env, request, body) {
         .bind(item.variant.id, stockValue, reserveValue, timestamp)
         .run();
 
-      if (stockDelta > 0) {
       if (stockDelta !== 0) {
         await recordSalesDelta(env, item.variant, stockDelta, timestamp);
       }
