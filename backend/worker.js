@@ -291,34 +291,38 @@ function resolveVariantFactory(env) {
       usedDecoded = usedDecoded ?? decodeSku(sku);
       if (usedDecoded && usedDecoded.colorName && usedDecoded.sizeLabel) {
         const sizeRow = await env.DB.prepare('SELECT id FROM sizes WHERE label = ?').bind(usedDecoded.sizeLabel).first();
-        if (sizeRow) {
-          const candidates = [];
+        if (sizeRow?.id) {
+          const productCandidates = [];
           if (usedDecoded.productName) {
             const productRow = await env.DB.prepare('SELECT id FROM products WHERE name = ?').bind(usedDecoded.productName).first();
-            if (productRow) {
-              candidates.push(productRow);
+            if (productRow?.id) {
+              productCandidates.push(productRow);
             }
           }
-          if (candidates.length === 0) {
-            const stmt = env.DB.prepare('SELECT id FROM products ORDER BY name');
-            const all = await stmt.all();
-            candidates.push(...all.results);
+          if (productCandidates.length === 0) {
+            const allProducts = await env.DB.prepare('SELECT id FROM products ORDER BY name').all();
+            if (allProducts?.results?.length) {
+              productCandidates.push(...allProducts.results);
+            }
           }
-          for (const product of candidates) {
-            const colorRow = await env.DB.prepare('SELECT id FROM colors WHERE product_id = ? AND name = ?').bind(product.id, usedDecoded.colorName).first();
-            if (!colorRow) {
+          for (const product of productCandidates) {
+            if (!product?.id) {
               continue;
             }
-            const upsert = env.DB.prepare(`
-              INSERT INTO product_variants (product_id, color_id, size_id, sku, offer_id)
-              VALUES (?, ?, ?, ?, ?)
-              ON CONFLICT(product_id, color_id, size_id)
-              DO UPDATE SET
-                sku = COALESCE(product_variants.sku, excluded.sku),
-                offer_id = COALESCE(product_variants.offer_id, excluded.offer_id)
-              RETURNING id, product_id, color_id, size_id, sku, offer_id
-            `);
-            const candidate = await upsert.bind(product.id, colorRow.id, sizeRow.id, sku ?? null, offerId ?? null).first();
+            const colorRow = await env.DB.prepare('SELECT id FROM colors WHERE product_id = ? AND name = ?')
+              .bind(product.id, usedDecoded.colorName)
+              .first();
+            if (!colorRow?.id) {
+              continue;
+            }
+            const candidate = await env.DB.prepare(`
+              SELECT id, product_id, color_id, size_id, sku, offer_id
+              FROM product_variants
+              WHERE product_id = ? AND color_id = ? AND size_id = ?
+              LIMIT 1
+            `)
+              .bind(product.id, colorRow.id, sizeRow.id)
+              .first();
             if (candidate) {
               variant = candidate;
               break;
@@ -632,16 +636,7 @@ async function processStockWebhook(env, request, body) {
       }, 202);
     }
 
-    if (unresolvedItems.length > 0) {
-      await updateWebhookStatus(env, eventId, 'pending', null, 'One or more variants not resolved');
-      return jsonResponse({
-        status: 'accepted',
-        message: 'One or more variants not resolved',
-        eventId,
-        unresolved: unresolvedItems.map(item => ({ index: item.index, payload: item.raw }))
-      }, 202);
-    }
-
+    const hasUnresolved = unresolvedItems.length > 0;
     const timestamp = new Date().toISOString();
     const upsertInventoryLevelsSql = 'INSERT INTO inventory_levels (variant_id, in_stock, in_reserve, updated_at)\n' +
       'VALUES (?, ?, ?, ?)\n' +
@@ -679,16 +674,25 @@ async function processStockWebhook(env, request, body) {
       await env.DB.prepare(insertInventoryHistorySql)
         .bind(item.variant.id, stockValue, reserveValue, timestamp)
         .run();
+
+      if (stockDelta > 0) {
       if (stockDelta !== 0) {
         await recordSalesDelta(env, item.variant, stockDelta, timestamp);
       }
     }
-    await updateWebhookStatus(env, eventId, 'processed', timestamp, null);
-    return jsonResponse({
-      status: 'processed',
+    const statusLabel = hasUnresolved ? 'processed_with_warnings' : 'processed';
+    await updateWebhookStatus(env, eventId, statusLabel, timestamp, null);
+    const responsePayload = {
+      status: statusLabel,
       eventId,
       variants: resolvedItems.map(item => ({ index: item.index, variantId: item.variant.id }))
-    });
+    };
+    if (hasUnresolved) {
+      responsePayload.message = 'Processed with unresolved variants';
+      responsePayload.unresolved = unresolvedItems.map(item => ({ index: item.index, payload: item.raw }));
+      console.warn('Stock webhook processed with unresolved variants', { eventId, unresolvedCount: unresolvedItems.length });
+    }
+    return jsonResponse(responsePayload, 200);
   } catch (error) {
     await updateWebhookStatus(env, eventId, 'failed', null, error?.message ?? 'Unexpected error');
     console.error('Failed to process stock webhook', { eventId, error });
