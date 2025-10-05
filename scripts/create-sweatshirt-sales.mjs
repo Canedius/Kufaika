@@ -1,6 +1,41 @@
 import { writeFileSync } from 'fs';
 
-console.log('📊 Створюємо SQL для додавання продажів за жовтень 2025');
+console.log('📊 Створюємо правильні INSERT команди для жовтня 2025');
+
+// Маппінги з бази даних
+const products = {
+  "Світшот Утеплений Kufaika Unisex": 2,
+  "Худі Утеплений Kufaika Unisex": 8,
+  "Футболка Premium Kufaika": 5,
+  "Футболка OVERSIZE Kufaika": 4,
+  "Футболка Relaxed Kufaika": 6,
+  "Худі Легкий Kufaika Unisex": 7
+};
+
+const sizes = {
+  "S": 1, "M": 2, "L": 3, "XL": 4, "XXL": 5, "3XL": 6, "XS": 7, "Інший": 8,
+  "XS/S": 10, "M/L": 11, "XL/XXL": 12, "38х40 см": 8
+};
+
+const colors = {
+  // Світшот Утеплений (product_id=2)
+  2: {"Чорний": 2, "Білий": 3, "Інший колір": 4},
+  
+  // Футболка OVERSIZE (product_id=4) 
+  4: {"Білий": 7, "Чорний": 8},
+  
+  // Футболка Premium (product_id=5)
+  5: {"Білий": 9, "Чорний": 10, "Бежевий": 11, "Ніжно-рожевий": 12, "Олива": 13, "Сірий": 14, "Койот": 15},
+  
+  // Футболка Relaxed (product_id=6)
+  6: {"Білий": 16, "Чорний": 17},
+  
+  // Худі Легкий (product_id=7)
+  7: {"Чорний": 18},
+  
+  // Худі Утеплений (product_id=8)
+  8: {"Чорний": 19, "Бежевий": 20, "Білий": 21, "Ніжно-рожевий": 22, "Олива": 23, "Сірий Грі": 24, "Інший Колір": 25, "Хакі": 26}
+};
 
 const salesData = {
   "products": [
@@ -122,20 +157,6 @@ const salesData = {
       ]
     },
     {
-      "name": "Еко сумка Kufaika",
-      "months": [
-        {
-          "month": "Жовтень",
-          "year": 2025,
-          "colors": {
-            "Чорний": [
-              {"size": "38х40 см", "quantity": 16}
-            ]
-          }
-        }
-      ]
-    },
-    {
       "name": "Футболка OVERSIZE Kufaika",
       "months": [
         {
@@ -194,21 +215,45 @@ const salesData = {
   ]
 };
 
-// Підраховуємо загальну кількість
+let sql = `-- 📊 ОНОВЛЕННЯ ПРОДАЖІВ ЗА ЖОВТЕНЬ 2025\n`;
+sql += `-- Використовуємо INSERT OR REPLACE для безпечного оновлення\n`;
+sql += `-- DELETE FROM sales WHERE period_id = 37; -- ⚠️ ЗАКОМЕНТОВАНО ДЛЯ БЕЗПЕКИ\n\n`;
+
 let totalRecords = 0;
-let sql = `-- 📊 ДОДАВАННЯ ПРОДАЖІВ ЗА ЖОВТЕНЬ 2025\n`;
-sql += `-- Нормальні дані продажів по товарах\n\n`;
+let successRecords = 0;
 
 salesData.products.forEach(product => {
-  sql += `-- ${product.name}\n`;
+  const productId = products[product.name];
+  if (!productId) {
+    console.log(`⚠️ Продукт "${product.name}" не знайдено`);
+    return;
+  }
+
+  sql += `-- ${product.name} (ID: ${productId})\n`;
   
   product.months.forEach(month => {
     if (month.year === 2025 && month.month === "Жовтень") {
-      Object.entries(month.colors).forEach(([colorName, sizes]) => {
-        sizes.forEach(sizeData => {
-          sql += `-- ${colorName} ${sizeData.size}: ${sizeData.quantity} шт\n`;
-          totalRecords++;
+      Object.entries(month.colors).forEach(([colorName, sizeArray]) => {
+        const colorId = colors[productId]?.[colorName];
+        
+        if (!colorId) {
+          console.log(`⚠️ Колір "${colorName}" для продукту ${product.name} не знайдено`);
+          return;
+        }
+        
+        sizeArray.forEach(sizeData => {
+          const sizeId = sizes[sizeData.size];
+          
+          if (!sizeId) {
+            console.log(`⚠️ Розмір "${sizeData.size}" не знайдено`);
+            return;
+          }
+          
+          sql += `INSERT OR REPLACE INTO sales (product_id, color_id, size_id, period_id, quantity) VALUES (${productId}, ${colorId}, ${sizeId}, 37, ${sizeData.quantity}); -- ${colorName} ${sizeData.size}: ${sizeData.quantity}\n`;
+          successRecords++;
         });
+        
+        totalRecords += sizeArray.length;
       });
     }
   });
@@ -216,18 +261,9 @@ salesData.products.forEach(product => {
   sql += `\n`;
 });
 
-sql += `-- Всього записів для додавання: ${totalRecords}\n\n`;
+sql += `-- Успішно створено ${successRecords} з ${totalRecords} записів\n`;
 
-// Створюємо запити для отримання ID
-sql += `-- Запити для отримання ID з бази:\n\n`;
-sql += `SELECT 'products' as type, id, name FROM products WHERE name IN (\n`;
-sql += salesData.products.map(p => `  '${p.name}'`).join(',\n');
-sql += `\n) ORDER BY id;\n\n`;
+console.log(`📊 Створено ${successRecords} з ${totalRecords} записів`);
 
-sql += `SELECT 'colors' as type, id, product_id, name FROM colors ORDER BY product_id, id;\n\n`;
-sql += `SELECT 'sizes' as type, id, label FROM sizes ORDER BY id;\n\n`;
-
-console.log(`📊 Підготовлено структуру для ${totalRecords} записів`);
-
-writeFileSync('update-oct-sales.sql', sql, 'utf8');
-console.log('✅ Створено update-oct-sales.sql');
+writeFileSync('update-sweatshirt-sales.sql', sql, 'utf8');
+console.log('✅ Створено update-sweatshirt-sales.sql');

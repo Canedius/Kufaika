@@ -1,0 +1,4 @@
+-- 🚨 НЕБЕЗПЕЧНІ DELETE КОМАНДИ ЗАБЛОКОВАНІ ДЛЯ БЕЗПЕКИ
+-- ⚠️ ЦІ КОМАНДИ МОЖУТЬ ВИДАЛИТИ КРИТИЧНІ ДАНІ ПРОДАЖІВ!
+-- DELETE FROM inventory_levels;
+-- DELETE FROM sales;

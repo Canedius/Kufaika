@@ -1,47 +1,47 @@
-﻿import fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import { execSync } from "node:child_process";
 
 const API_ROOT = "https://openapi.keycrm.app/v1";
-const token = process.env.KEYCRM_API_TOKEN;
+const API_TOKEN = process.env.KEYCRM_API_TOKEN;
 
-if (!token) {
-  throw new Error("KEYCRM_API_TOKEN is not set in the environment.");
+if (!API_TOKEN) {
+  console.error("❌ KEYCRM_API_TOKEN environment variable is not set");
+  console.log("💡 Set it with: $env:KEYCRM_API_TOKEN='your_token_here'");
+  process.exit(1);
 }
 
 function getKufSkus() {
   const output = execSync(
-    'wrangler d1 execute hoodie-sales --remote --command "SELECT sku FROM product_variants WHERE sku LIKE \'KUF%\'" --json',
+    `wrangler d1 execute hoodie-sales --remote --command "SELECT sku FROM product_variants WHERE sku LIKE 'KUF%'" --json`,
     { encoding: "utf8" }
   );
   const json = JSON.parse(output);
   return (json[0]?.results ?? []).map((row) => row.sku).filter(Boolean);
 }
 
-const TARGET_SKUS = getKufSkus();
-const CHUNK_SIZE = Number(process.env.KEYCRM_SKU_BATCH_SIZE) > 0
-  ? Number(process.env.KEYCRM_SKU_BATCH_SIZE)
-  : 5;
+const TARGET_SKUS = getKufSkus(); // Всі SKU
 const RETRY_LIMIT = 5;
+const REQUEST_INTERVAL_MS = 300; // Швидше між запитами
+const BATCH_SIZE = 3; // По 3 SKU в батчі
 
 async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchJson(url) {
+  console.log(`Requesting: ${url}`);
   const res = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${API_TOKEN}`,
       Accept: "application/json"
     }
   });
+  const text = await res.text();
+  console.log(`Response (${res.status} ${res.statusText}): ${text}`);
   if (!res.ok) {
-    const body = await res.text();
-    const err = new Error(`KeyCRM request failed: ${res.status} ${res.statusText}`);
-    err.status = res.status;
-    err.body = body;
-    throw err;
+    throw new Error(`KeyCRM request failed: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+  return JSON.parse(text);
 }
 
 function normalizeRecord(record) {
@@ -52,22 +52,19 @@ function normalizeRecord(record) {
     return null;
   }
   const inStock = Number(balance?.in_stock ?? balance?.available ?? balance?.stock ?? balance?.quantity ?? 0);
-  const inReserve = Number(balance?.in_reserve ?? balance?.reserve ?? 0);
+  const inReserve = Number(balance?.in_reserve ?? balance?.reserve ?? balance?.reserved ?? 0);
   return { sku, in_stock: inStock, in_reserve: inReserve, found: true };
 }
 
-async function fetchStockBatch(skus) {
+async function fetchSingleSku(sku) {
   let attempt = 0;
   while (attempt < RETRY_LIMIT) {
     attempt += 1;
     try {
-      const params = new URLSearchParams({
-        limit: String(Math.max(skus.length, 1)),
-        page: "1"
-      });
-      for (const sku of skus) {
-        params.append("filter[offers_sku][]", sku);
-      }
+      const params = new URLSearchParams();
+      params.set("limit", "1");
+      params.set("page", "1");
+      params.append("filter[offers_sku]", sku);
       const url = `${API_ROOT}/offers/stocks?${params.toString()}`;
       const json = await fetchJson(url);
       const items = Array.isArray(json.data)
@@ -75,36 +72,25 @@ async function fetchStockBatch(skus) {
         : Array.isArray(json.items)
           ? json.items
           : [];
-      const normalizedMap = new Map();
-      for (const item of items) {
-        const normalized = normalizeRecord(item);
-        if (normalized?.sku) {
-          normalizedMap.set(normalized.sku, normalized);
-        }
+      const normalized = items.length ? normalizeRecord(items[0]) : null;
+      if (normalized) {
+        console.log(`Normalized: ${JSON.stringify(normalized)}`);
+        return normalized;
       }
-      return skus.map((sku) => {
-        if (normalizedMap.has(sku)) {
-          return normalizedMap.get(sku);
-        }
-        return { sku, in_stock: 0, in_reserve: 0, found: false };
-      });
+      console.log(`No data for ${sku}`);
+      return { sku, in_stock: 0, in_reserve: 0, found: false };
     } catch (error) {
-      if (error.status === 429) {
+      console.warn(`Failed ${sku} attempt ${attempt}: ${error.message}`);
+      if ((error.status === 429 || (error.status >= 500 && error.status < 600)) && attempt < RETRY_LIMIT) {
         const delay = 1000 * attempt;
-        console.warn(`429 for batch [${skus.join(', ')}], retrying in ${delay}ms`);
+        console.warn(`Retry ${attempt} for ${sku} in ${delay}ms`);
         await sleep(delay);
         continue;
       }
       throw error;
     }
   }
-  return skus.map((sku) => ({
-    sku,
-    in_stock: 0,
-    in_reserve: 0,
-    found: false,
-    error: "Max retries exceeded"
-  }));
+  return { sku, in_stock: 0, in_reserve: 0, found: false, error: "Max retries exceeded" };
 }
 
 if (TARGET_SKUS.length === 0) {
@@ -112,30 +98,48 @@ if (TARGET_SKUS.length === 0) {
   process.exit(0);
 }
 
+console.log(`🚀 Починаємо завантаження ${TARGET_SKUS.length} SKU по ${BATCH_SIZE} в батчі...`);
+
 const results = [];
-for (let index = 0; index < TARGET_SKUS.length; index += CHUNK_SIZE) {
-  const chunk = TARGET_SKUS.slice(index, index + CHUNK_SIZE);
-  try {
-    const batchResults = await fetchStockBatch(chunk);
-    results.push(...batchResults);
-  } catch (error) {
-    console.warn(`Failed to fetch batch [${chunk.join(', ')}]:`, error.message);
-    if (error.body) {
-      console.warn(error.body);
-    }
-    for (const sku of chunk) {
+const totalBatches = Math.ceil(TARGET_SKUS.length / BATCH_SIZE);
+
+for (let i = 0; i < TARGET_SKUS.length; i += BATCH_SIZE) {
+  const batch = TARGET_SKUS.slice(i, i + BATCH_SIZE);
+  const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+  
+  console.log(`📦 Батч ${batchNum}/${totalBatches}: [${batch.join(', ')}]`);
+  
+  // Обробляємо кожен SKU в батчі послідовно
+  for (const sku of batch) {
+    try {
+      const result = await fetchSingleSku(sku);
+      results.push(result);
+      if (result.found) {
+        console.log(`  ✅ ${result.sku}: ${result.in_stock} в наявності, ${result.in_reserve} в резерві`);
+      } else {
+        console.log(`  ⚠️ ${result.sku}: не знайдено`);
+      }
+    } catch (error) {
+      console.warn(`  ❌ ${sku}: ${error.message}`);
       results.push({ sku, in_stock: 0, in_reserve: 0, found: false, error: error.message });
     }
+    await sleep(REQUEST_INTERVAL_MS);
   }
-  await sleep(400);
+  
+  console.log(`✅ Батч ${batchNum} завершено. Всього оброблено: ${results.length}/${TARGET_SKUS.length}`);
+  
+  // Пауза між батчами
+  if (i + BATCH_SIZE < TARGET_SKUS.length) {
+    console.log('⏳ Пауза між батчами...');
+    await sleep(1000);
+  }
 }
-
-const filteredResults = results.filter((entry) => entry?.sku?.startsWith("KUF"));
 
 await fs.mkdir("data", { recursive: true });
 await fs.writeFile(
   "data/latest-stocks.json",
-  JSON.stringify(filteredResults, null, 2),
+  JSON.stringify(results, null, 2),
   "utf8"
 );
-console.log(`Saved ${filteredResults.length} KUF stock records to data/latest-stocks.json`);
+
+console.log(`Saved ${results.length} KUF stock records to data/latest-stocks.json`);

@@ -121,6 +121,9 @@ function ensureVariant(productId, colorId, sizeId, sku = null, offerId = null) {
 }
 
 function resetTables() {
+  console.log('⚠️ УВАГА: resetTables() функція заблокована для безпеки');
+  console.log('🛡️ DELETE команди закоментовані для запобігання втрати даних');
+  /*
   db.exec(`
     DELETE FROM inventory_levels;
     DELETE FROM inventory_history;
@@ -132,6 +135,7 @@ function resetTables() {
     DELETE FROM products;
     DELETE FROM webhook_events;
   `);
+  */
 }
 
 function importData() {

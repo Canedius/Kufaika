@@ -1,0 +1,16 @@
+-- 🚨 НЕБЕЗПЕЧНІ DELETE КОМАНДИ ЗАБЛОКОВАНІ ДЛЯ БЕЗПЕКИ
+-- ⚠️ ЦІ КОМАНДИ МОЖУТЬ ВИДАЛИТИ ВСЮ БАЗУ!
+-- DELETE FROM inventory_levels;
+-- DELETE FROM order_event_items;
+-- DELETE FROM order_events;
+-- DELETE FROM orders;
+-- DELETE FROM webhook_events;
+-- DELETE FROM sales;
+-- DELETE FROM product_variants;
+-- DELETE FROM colors;
+-- DELETE FROM periods;
+-- DELETE FROM sizes;
+-- DELETE FROM products;
+
+-- Скидаємо автоінкремент - ТАКОЖ ЗАБЛОКОВАНО
+-- DELETE FROM sqlite_sequence;

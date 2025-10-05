@@ -150,18 +150,10 @@ for (const product of salesData.products) {
 }
 
 const statements = [];
-statements.push("DELETE FROM inventory_levels;");
-statements.push("DELETE FROM inventory_history;");
-statements.push("DELETE FROM sales;");
-statements.push("DELETE FROM product_variants;");
-statements.push("DELETE FROM periods;");
-statements.push("DELETE FROM colors;");
-statements.push("DELETE FROM sizes;");
-statements.push("DELETE FROM products;");
-statements.push("DELETE FROM webhook_events;");
-statements.push("DELETE FROM orders;");
-statements.push("DELETE FROM order_events;");
-statements.push("DELETE FROM order_event_items;");
+
+// ⚠️ НЕБЕЗПЕЧНІ DELETE КОМАНДИ ВИДАЛЕНО!
+// Цей скрипт тепер тільки додає нові дані без видалення існуючих
+// Для повного скидання бази використовуйте окремий скрипт
 
 for (const size of sizes) {
   statements.push(`INSERT INTO sizes (id, label) VALUES (${size.id}, ${sqlString(size.label)}) ON CONFLICT(id) DO UPDATE SET label = excluded.label;`);
@@ -189,7 +181,7 @@ for (const row of sales) {
 }
 
 
-const outputPath = join(process.cwd(), "backend", "seed-d1.sql");
+const outputPath = join(process.cwd(), "seed-d1.sql");
 writeFileSync(outputPath, statements.join("\n") + "\n", { encoding: "utf-8" });
 
 console.log(`Generated ${statements.length} SQL statements to ${outputPath}`);
