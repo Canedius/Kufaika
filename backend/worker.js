@@ -789,6 +789,119 @@ async function processOrderWebhook(env, request, body) {
     return jsonResponse({ error: 'Failed to process order webhook' }, 500);
   }
 }
+async function reprocessWebhookData(env, eventId, eventType, payload, receivedAt) {
+  try {
+    const stockItems = normalizeStockItems(payload);
+    if (stockItems.length === 0) {
+      await updateWebhookStatus(env, eventId, 'failed', null, 'Empty stock payload');
+      return;
+    }
+
+    const invalidItems = stockItems.filter(item => Number.isNaN(item.inStock) || Number.isNaN(item.inReserve));
+    if (invalidItems.length > 0) {
+      await updateWebhookStatus(env, eventId, 'failed', null, 'Invalid stock numbers');
+      return;
+    }
+
+    const resolveVariant = resolveVariantFactory(env);
+    const resolvedItems = [];
+    const unresolvedItems = [];
+    
+    for (const item of stockItems) {
+      const { variant } = await resolveVariant({ offerId: item.offerId, sku: item.sku });
+      if (variant) {
+        resolvedItems.push({ ...item, variant });
+      } else {
+        unresolvedItems.push({ ...item });
+      }
+    }
+
+    if (unresolvedItems.length > 0) {
+      await updateWebhookStatus(env, eventId, 'pending', null, 'Variant not resolved');
+      return;
+    }
+
+    // Process all resolved items
+    const warnings = [];
+    for (const item of resolvedItems) {
+      try {
+        await updateVariantIdentifiers(env, item.variant.id, item.sku, item.offerId);
+
+        const oldStock = await getVariantStock(env, item.variant.id);
+        await setVariantStock(env, item.variant.id, item.inStock, item.inReserve);
+
+        if (oldStock !== null && oldStock !== item.inStock) {
+          const stockDelta = oldStock - item.inStock;
+          if (stockDelta > 0) {
+            await recordSalesDelta(env, item.variant, stockDelta, receivedAt);
+          }
+        }
+      } catch (error) {
+        console.error(`Warning processing item ${item.sku}:`, error);
+        warnings.push(`${item.sku}: ${error.message}`);
+      }
+    }
+
+    const status = warnings.length > 0 ? 'processed_with_warnings' : 'processed';
+    const warningMsg = warnings.length > 0 ? warnings.join('; ') : null;
+    await updateWebhookStatus(env, eventId, status, receivedAt, warningMsg);
+
+  } catch (error) {
+    console.error(`Error reprocessing webhook ${eventId}:`, error);
+    await updateWebhookStatus(env, eventId, 'failed', null, error.message);
+  }
+}
+
+async function processPendingWebhooks(env) {
+  try {
+    const pendingWebhooks = await env.DB.prepare(`
+      SELECT id, event_type, payload, received_at 
+      FROM webhook_events 
+      WHERE status = 'pending' 
+      AND payload LIKE '%KUF%'
+      AND error IS NULL
+      ORDER BY received_at ASC 
+      LIMIT 50
+    `).all();
+
+    if (!pendingWebhooks?.results?.length) {
+      return jsonResponse({ 
+        message: 'No pending KUF webhooks to process',
+        processed: 0
+      });
+    }
+
+    let processed = 0;
+    let failed = 0;
+
+    for (const webhook of pendingWebhooks.results) {
+      try {
+        if (webhook.event_type === 'stocks') {
+          const payload = JSON.parse(webhook.payload || '[]');
+          await reprocessWebhookData(env, webhook.id, webhook.event_type, payload, webhook.received_at);
+          processed++;
+        } else {
+          console.log(`Skipping non-stocks webhook ${webhook.id}`);
+        }
+      } catch (error) {
+        console.error(`Failed to process webhook ${webhook.id}:`, error);
+        await updateWebhookStatus(env, webhook.id, 'failed', null, error.message);
+        failed++;
+      }
+    }
+
+    return jsonResponse({
+      message: `Processed ${processed} webhooks, ${failed} failed`,
+      processed,
+      failed,
+      total: pendingWebhooks.results.length
+    });
+  } catch (error) {
+    console.error('Error processing pending webhooks:', error);
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -847,6 +960,14 @@ export default {
       const body = await request.json().catch(() => null);
       return processOrderWebhook(env, request, body ?? {});
     }
+
+    if (url.pathname === '/process-pending-webhooks') {
+      if (request.method !== 'POST') {
+        return jsonResponse({ error: 'Method not allowed' }, 405);
+      }
+      return processPendingWebhooks(env);
+    }
+
     return jsonResponse({ error: 'Not found' }, 404);
   }
 };
