@@ -72,6 +72,7 @@ async function loadSalesData(options = {}) {
             window.__HOODIE_API_BASE__ = base;
             salesData = data;
             normalizedProducts = deduplicateProducts(data.products);
+            buildInventoryIndex(data.products);
             salesDataLoaded = true;
             return salesData;
         } catch (error) {
@@ -84,6 +85,12 @@ async function loadSalesData(options = {}) {
 
 
 let salesChart, weeklyDemandChart;
+let inventoryByProduct = new Map();
+const INVENTORY_KEY_DELIMITER = '||';
+const inventoryDateFormatter = new Intl.DateTimeFormat('uk-UA', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+});
 // Define preferred size order for consistent display
 const sizeOrder = ['XS', 'XS/S', 'S', 'M', 'M/L', 'L', 'XL', 'XL/XXL', '2XL', 'XXL', '3XL'];
 // Function to assign colors
@@ -169,6 +176,204 @@ function formatDelta(delta, decimals = 0) {
         : formatNumber(roundedDelta, 0);
     return `<span class="diff ${className}">(${sign}${formatted})</span>`;
 }
+
+function getInventoryKey(color, size) {
+    const safeColor = typeof color === 'string' ? color : '';
+    const safeSize = typeof size === 'string' ? size : '';
+    return `${safeColor}${INVENTORY_KEY_DELIMITER}${safeSize}`;
+}
+
+function buildInventoryIndex(products) {
+    inventoryByProduct = new Map();
+    if (!Array.isArray(products)) {
+        return;
+    }
+    products.forEach(product => {
+        if (!product || !product.name) {
+            return;
+        }
+        const variantMap = new Map();
+        (product.variants || []).forEach(variant => {
+            const key = getInventoryKey(variant.color, variant.size);
+            if (key) {
+                variantMap.set(key, {
+                    sku: variant.sku || '',
+                    color: variant.color,
+                    size: variant.size
+                });
+            }
+        });
+        const rowMap = new Map();
+        const inventory = product.inventory && typeof product.inventory === 'object'
+            ? product.inventory
+            : {};
+        Object.entries(inventory).forEach(([color, sizes]) => {
+            Object.entries(sizes || {}).forEach(([size, info]) => {
+                const key = getInventoryKey(color, size);
+                if (!key) {
+                    return;
+                }
+                const variant = variantMap.get(key);
+                const inStock = info && typeof info.in_stock === 'number' ? info.in_stock : null;
+                const inReserve = info && typeof info.in_reserve === 'number' ? info.in_reserve : null;
+                const updatedAt = info && typeof info.updated_at === 'string' ? info.updated_at : null;
+                rowMap.set(key, {
+                    sku: variant ? variant.sku || '' : '',
+                    color,
+                    size,
+                    in_stock: inStock,
+                    in_reserve: inReserve,
+                    updated_at: updatedAt
+                });
+            });
+        });
+        (product.variants || []).forEach(variant => {
+            const key = getInventoryKey(variant.color, variant.size);
+            if (!key) {
+                return;
+            }
+            if (!rowMap.has(key)) {
+                rowMap.set(key, {
+                    sku: variant.sku || '',
+                    color: variant.color,
+                    size: variant.size,
+                    in_stock: null,
+                    in_reserve: null,
+                    updated_at: null
+                });
+            } else if (variant.sku && !rowMap.get(key).sku) {
+                const record = rowMap.get(key);
+                record.sku = variant.sku;
+            }
+        });
+        const rows = Array.from(rowMap.values());
+        rows.sort((a, b) => {
+            if (a.color !== b.color) {
+                return a.color.localeCompare(b.color, 'uk');
+            }
+            const indexA = sizeOrder.indexOf(a.size);
+            const indexB = sizeOrder.indexOf(b.size);
+            if (indexA === -1 && indexB === -1) {
+                return a.size.localeCompare(b.size, 'uk');
+            }
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+        inventoryByProduct.set(product.name, rows);
+    });
+}
+
+function formatInventoryTimestamp(value) {
+    if (!value) {
+        return '—';
+    }
+    try {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+        return inventoryDateFormatter.format(date);
+    } catch (error) {
+        return value;
+    }
+}
+
+function renderInventoryForProduct(productName) {
+    const container = document.getElementById('inventoryTableContainer');
+    if (!container) {
+        return;
+    }
+    if (!salesDataLoaded || !inventoryByProduct || inventoryByProduct.size === 0) {
+        container.innerHTML = '<p class="inventory-empty">Дані про залишки зараз недоступні.</p>';
+        return;
+    }
+    if (!productName) {
+        container.innerHTML = '<p class="inventory-empty">Оберіть товар, щоб побачити залишки.</p>';
+        return;
+    }
+    const rows = inventoryByProduct.get(productName) || [];
+    if (!rows.length) {
+        container.innerHTML = '<p class="inventory-empty">Немає даних про залишки для обраного товару.</p>';
+        return;
+    }
+    const totalStock = rows.reduce((sum, row) => sum + (typeof row.in_stock === 'number' ? row.in_stock : 0), 0);
+    const totalReserve = rows.reduce((sum, row) => sum + (typeof row.in_reserve === 'number' ? row.in_reserve : 0), 0);
+    const fragment = document.createDocumentFragment();
+    const summary = document.createElement('p');
+    summary.className = 'inventory-summary';
+    summary.innerHTML = `На складі: <strong>${formatNumber(totalStock, 0)}</strong> шт. • У резерві: <strong>${formatNumber(totalReserve, 0)}</strong> шт.`;
+    fragment.appendChild(summary);
+    const table = document.createElement('table');
+    table.className = 'inventory-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr>
+            <th>SKU</th>
+            <th>Колір</th>
+            <th>Розмір</th>
+            <th>На складі</th>
+            <th>У резерві</th>
+            <th>Оновлено</th>
+        </tr>
+    `;
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        const skuCell = document.createElement('td');
+        skuCell.textContent = row.sku || '—';
+        if (!row.sku) {
+            skuCell.classList.add('dimmed');
+        }
+        tr.appendChild(skuCell);
+        const colorCell = document.createElement('td');
+        colorCell.textContent = row.color || '—';
+        tr.appendChild(colorCell);
+        const sizeCell = document.createElement('td');
+        sizeCell.textContent = row.size || '—';
+        tr.appendChild(sizeCell);
+        const stockCell = document.createElement('td');
+        stockCell.classList.add('numeric');
+        if (typeof row.in_stock === 'number') {
+            stockCell.textContent = formatNumber(row.in_stock, 0);
+            if (row.in_stock < 0) {
+                stockCell.classList.add('negative');
+            } else if (row.in_stock > 0) {
+                stockCell.classList.add('positive');
+            }
+        } else {
+            stockCell.textContent = '—';
+            stockCell.classList.add('dimmed');
+        }
+        tr.appendChild(stockCell);
+        const reserveCell = document.createElement('td');
+        reserveCell.classList.add('numeric');
+        if (typeof row.in_reserve === 'number') {
+            reserveCell.textContent = formatNumber(row.in_reserve, 0);
+            if (row.in_reserve < 0) {
+                reserveCell.classList.add('negative');
+            } else if (row.in_reserve > 0) {
+                reserveCell.classList.add('positive');
+            }
+        } else {
+            reserveCell.textContent = '—';
+            reserveCell.classList.add('dimmed');
+        }
+        tr.appendChild(reserveCell);
+        const dateCell = document.createElement('td');
+        dateCell.textContent = formatInventoryTimestamp(row.updated_at);
+        if (!row.updated_at) {
+            dateCell.classList.add('dimmed');
+        }
+        tr.appendChild(dateCell);
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    fragment.appendChild(table);
+    container.replaceChildren(fragment);
+}
+
 // Helper to get month index (0-based)
 const MONTH_INDEXES = new Map([
     ['січень', 0],
@@ -520,6 +725,7 @@ function updateProductSelect() {
     if (!normalizedProducts || normalizedProducts.length === 0) {
         productSelect.innerHTML = '<option value="">Немає доступних товарів</option>';
         document.getElementById('totalSales').innerHTML = '<p style="color: red;">Попередження: для вибраних параметрів немає статистики</p>';
+        renderInventoryForProduct('');
         console.error('normalizedProducts is empty or undefined');
         return;
     }
@@ -734,10 +940,13 @@ function updateSelectorsForCurrentProduct() {
     const productSelectElement = document.getElementById('productSelect');
     if (!productSelectElement) {
         console.error('Product select element not found');
+        renderInventoryForProduct('');
         return;
     }
-    const productData = getProductByName(productSelectElement.value);
+    const selectedProductName = productSelectElement.value;
+    const productData = getProductByName(selectedProductName);
     if (!productData) {
+        renderInventoryForProduct(selectedProductName);
         console.error('Product not found for current selection');
         return;
     }
@@ -745,6 +954,7 @@ function updateSelectorsForCurrentProduct() {
     updateMonthSelect(productData);
     updateColorSelect(productData);
     updateDailyDemandNumbers(productData);
+    renderInventoryForProduct(productData.name);
     updateChart();
 }
 
