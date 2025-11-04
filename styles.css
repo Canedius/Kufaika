@@ -282,6 +282,14 @@ select:focus {
     color: #2e7d32;
     font-weight: 600;
 }
+.inventory-table .warning {
+    color: #f9a825;
+    font-weight: 600;
+}
+.inventory-table .critical {
+    color: #c62828;
+    font-weight: 600;
+}
 @media (max-width: 768px) {
     .inventory-section {
         padding: 15px;

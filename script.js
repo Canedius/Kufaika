@@ -246,7 +246,12 @@ function buildInventoryIndex(products) {
                 record.sku = variant.sku;
             }
         });
-        const rows = Array.from(rowMap.values());
+        const rows = Array.from(rowMap.values()).filter(row => {
+            if (!row.sku) {
+                return false;
+            }
+            return row.sku.toUpperCase().startsWith('KUF');
+        });
         rows.sort((a, b) => {
             if (a.color !== b.color) {
                 return a.color.localeCompare(b.color, 'uk');
@@ -279,7 +284,26 @@ function formatInventoryTimestamp(value) {
     }
 }
 
-function renderInventoryForProduct(productName) {
+function applyInventoryValue(cell, value) {
+    cell.classList.add('numeric');
+    if (typeof value === 'number') {
+        cell.textContent = formatNumber(value, 0);
+        if (value < 0) {
+            cell.classList.add('negative');
+        } else if (value < 20) {
+            cell.classList.add('critical');
+        } else if (value < 100) {
+            cell.classList.add('warning');
+        } else {
+            cell.classList.add('positive');
+        }
+    } else {
+        cell.textContent = '—';
+        cell.classList.add('dimmed');
+    }
+}
+
+function renderInventoryForProduct(productName, filterColor = null) {
     const container = document.getElementById('inventoryTableContainer');
     if (!container) {
         return;
@@ -292,9 +316,17 @@ function renderInventoryForProduct(productName) {
         container.innerHTML = '<p class="inventory-empty">Оберіть товар, щоб побачити залишки.</p>';
         return;
     }
-    const rows = inventoryByProduct.get(productName) || [];
+    const allRows = inventoryByProduct.get(productName) || [];
+    let rows = allRows;
+    if (filterColor) {
+        rows = rows.filter(row => row.color === filterColor);
+    }
     if (!rows.length) {
-        container.innerHTML = '<p class="inventory-empty">Немає даних про залишки для обраного товару.</p>';
+        if (filterColor) {
+            container.innerHTML = `<p class="inventory-empty">Немає даних про залишки для кольору ${filterColor}.</p>`;
+        } else {
+            container.innerHTML = '<p class="inventory-empty">Немає даних про залишки для обраного товару.</p>';
+        }
         return;
     }
     const totalStock = rows.reduce((sum, row) => sum + (typeof row.in_stock === 'number' ? row.in_stock : 0), 0);
@@ -302,7 +334,8 @@ function renderInventoryForProduct(productName) {
     const fragment = document.createDocumentFragment();
     const summary = document.createElement('p');
     summary.className = 'inventory-summary';
-    summary.innerHTML = `На складі: <strong>${formatNumber(totalStock, 0)}</strong> шт. • У резерві: <strong>${formatNumber(totalReserve, 0)}</strong> шт.`;
+    const scopeLabel = filterColor ? ` (колір: ${filterColor})` : '';
+    summary.innerHTML = `На складі${scopeLabel}: <strong>${formatNumber(totalStock, 0)}</strong> шт. • У резерві: <strong>${formatNumber(totalReserve, 0)}</strong> шт.`;
     fragment.appendChild(summary);
     const table = document.createElement('table');
     table.className = 'inventory-table';
@@ -334,32 +367,10 @@ function renderInventoryForProduct(productName) {
         sizeCell.textContent = row.size || '—';
         tr.appendChild(sizeCell);
         const stockCell = document.createElement('td');
-        stockCell.classList.add('numeric');
-        if (typeof row.in_stock === 'number') {
-            stockCell.textContent = formatNumber(row.in_stock, 0);
-            if (row.in_stock < 0) {
-                stockCell.classList.add('negative');
-            } else if (row.in_stock > 0) {
-                stockCell.classList.add('positive');
-            }
-        } else {
-            stockCell.textContent = '—';
-            stockCell.classList.add('dimmed');
-        }
+        applyInventoryValue(stockCell, row.in_stock);
         tr.appendChild(stockCell);
         const reserveCell = document.createElement('td');
-        reserveCell.classList.add('numeric');
-        if (typeof row.in_reserve === 'number') {
-            reserveCell.textContent = formatNumber(row.in_reserve, 0);
-            if (row.in_reserve < 0) {
-                reserveCell.classList.add('negative');
-            } else if (row.in_reserve > 0) {
-                reserveCell.classList.add('positive');
-            }
-        } else {
-            reserveCell.textContent = '—';
-            reserveCell.classList.add('dimmed');
-        }
+        applyInventoryValue(reserveCell, row.in_reserve);
         tr.appendChild(reserveCell);
         const dateCell = document.createElement('td');
         dateCell.textContent = formatInventoryTimestamp(row.updated_at);
@@ -766,6 +777,7 @@ function updateChartTypes() {
 function updateChart() {
     const productSelect = document.getElementById('productSelect').value;
     const chartType = document.getElementById('chartType').value;
+    const filterColor = chartType !== 'byColor' ? chartType : null;
     const salesChartTitle = document.getElementById('salesChartTitle');
     const weeklyDemandChartTitle = document.getElementById('weeklyDemandChartTitle');
     const productData = getProductByName(productSelect);
@@ -775,8 +787,10 @@ function updateChart() {
         document.getElementById('totalSales').innerHTML = '<p style="color: red;">Попередження: відсутня статистика для вибраного товару</p>';
         document.getElementById('dailyDemandList').innerHTML = '';
         console.error('Product not found:', productSelect);
+        renderInventoryForProduct('', filterColor);
         return;
     }
+    renderInventoryForProduct(productData.name, filterColor);
     const selectedYear = getSelectedYear();
     const filteredMonths = selectedYear === null
         ? productData.months
@@ -946,7 +960,11 @@ function updateSelectorsForCurrentProduct() {
     const selectedProductName = productSelectElement.value;
     const productData = getProductByName(selectedProductName);
     if (!productData) {
-        renderInventoryForProduct(selectedProductName);
+        const chartTypeElement = document.getElementById('chartType');
+        const filterColor = chartTypeElement && chartTypeElement.value !== 'byColor'
+            ? chartTypeElement.value
+            : null;
+        renderInventoryForProduct('', filterColor);
         console.error('Product not found for current selection');
         return;
     }
@@ -954,7 +972,6 @@ function updateSelectorsForCurrentProduct() {
     updateMonthSelect(productData);
     updateColorSelect(productData);
     updateDailyDemandNumbers(productData);
-    renderInventoryForProduct(productData.name);
     updateChart();
 }
 
